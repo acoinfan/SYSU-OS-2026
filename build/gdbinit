@@ -1,0 +1,4 @@
+target remote:1234
+file ../build/kernel.o
+b MemoryManager::openPageMechanism
+set disassembly-flavor intel
