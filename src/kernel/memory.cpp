@@ -13,11 +13,14 @@ MemoryManager::MemoryManager()
 
 void MemoryManager::initialize()
 {
+    // DEBUG:
+    printf("CALL\n");
     this->totalMemory = 0;
     this->totalMemory = getTotalMemory();
 
     // 预留的内存
-    int usedMemory = 256 * PAGE_SIZE + 0x100000;
+    // int usedMemory = 256 * PAGE_SIZE + 0x100000;
+    int usedMemory = RESERVED_MEMORY;
     if (this->totalMemory < usedMemory)
     {
         printf("memory is too small, halt.\n");
@@ -33,19 +36,47 @@ void MemoryManager::initialize()
     int kernelPhysicalStartAddress = usedMemory;
     int userPhysicalStartAddress = usedMemory + kernelPages * PAGE_SIZE;
 
-    int kernelPhysicalBitMapStart = BITMAP_START_ADDRESS;
-    int userPhysicalBitMapStart = kernelPhysicalBitMapStart + ceil(kernelPages, 8);
-    int kernelVirtualBitMapStart = userPhysicalBitMapStart + ceil(userPages, 8);
+    // int kernelPhysicalBitMapStart = BITMAP_START_ADDRESS;
+    // int userPhysicalBitMapStart = kernelPhysicalBitMapStart + ceil(kernelPages, 8);
+    // int kernelVirtualBitMapStart = userPhysicalBitMapStart + ceil(userPages, 8);
+
+    int kernelPhysicalBitMapStart = KERNEL_PA_POOL_BITMAP;
+    int userPhysicalBitMapStart = USER_PA_POOL_BITMAP;
+    int kernelVirtualBitMapStart = USER_VA_POOL_BITMAP;
+
+    // clean Bitmap, FreeBitMap and FreeNodes
+    // clean Bitmap
+    memset((void*)KERNEL_PA_POOL_BITMAP, 0, PA_BITMAP_SIZE);
+    memset((void*)USER_PA_POOL_BITMAP, 0, PA_BITMAP_SIZE);
+
+    memset((void*)USER_VA_POOL_BITMAP, 0, VA_BITMAP_SIZE);
+
+    // clean FreeBitMap
+    memset((void*)KERNEL_PA_POOL_FREE_BITMAP, 0, FREE_BITMAP_SIZE);
+    memset((void*)USER_PA_POOL_FREE_BITMAP, 0, FREE_BITMAP_SIZE);
+
+    // clean FreeNodes
+    memset((void*)KERNEL_PA_POOL_FREENODES, 0, FREENODES_SIZE);
+    memset((void*)USER_PA_POOL_FREENODES, 0, FREENODES_SIZE);
+
+    // also can be replace by:
+    // memset((void*)0x200000, 0, 0x200000);
 
     kernelPhysical.initialize(
         (char *)kernelPhysicalBitMapStart,
         kernelPages,
-        kernelPhysicalStartAddress);
+        kernelPhysicalStartAddress,
+        (char *)KERNEL_PA_POOL_FREE_BITMAP,
+        (FreeNode*)KERNEL_PA_POOL_FREENODES
+        );
 
     userPhysical.initialize(
         (char *)userPhysicalBitMapStart,
         userPages,
-        userPhysicalStartAddress);
+        userPhysicalStartAddress,
+        (char *)USER_PA_POOL_FREE_BITMAP,
+        (FreeNode *)USER_PA_POOL_FREENODES
+    );
 
     kernelVirtual.initialize(
         (char *)kernelVirtualBitMapStart,
@@ -131,7 +162,8 @@ void MemoryManager::openPageMechanism()
 {
     // 页目录表指针
     int *directory = (int *)PAGE_DIRECTORY;
-    //线性地址0~4MB对应的页表
+    // 线性地址0~4MB对应的页表
+    // page = 0x101000, 0x101000开始至0x102000
     int *page = (int *)(PAGE_DIRECTORY + PAGE_SIZE);
 
     // 初始化页目录表
@@ -148,18 +180,33 @@ void MemoryManager::openPageMechanism()
         address += PAGE_SIZE;
     }
 
+    // 将线性地址2~4MB恒等映射到物理地址2~4MB
+    address = 0x200000;
+    for (int i = 512; i < 1024; ++i)
+    {
+        // U/S = 1, R/W = 1, P = 1
+        page[i] = address | 0x7;
+        address += PAGE_SIZE;
+    }
     // 初始化页目录项
 
+    printf("Building Initial Page Table. Please Wait...\n");
     // 0~1MB
     directory[0] = ((int)page) | 0x07;
     // 3GB的内核空间
     directory[768] = directory[0];
     // 最后一个页目录项指向页目录表
     directory[1023] = ((int)directory) | 0x7;
+    // 769~1022项
+
+    for (int i = 1; i < 254; i++) {
+        int* pte = (int*)(PAGE_DIRECTORY + PAGE_SIZE + i * PAGE_SIZE);
+        directory[768 + i] = (int)pte | 0x7; 
+        memset(pte, 0, PAGE_SIZE);  
+    }
 
     // 初始化cr3，cr0，开启分页机制
     asm_init_page_reg(directory);
-
     printf("open page mechanism\n");
 }
 
@@ -247,11 +294,13 @@ bool MemoryManager::connectPhysicalVirtualPage(const int virtualAddress, const i
     return true;
 }
 
+// addr = 0x[ffc] : [cff] : [PDE Index * 4]
 int MemoryManager::toPDE(const int virtualAddress)
 {
     return (0xfffff000 + (((virtualAddress & 0xffc00000) >> 22) * 4));
 }
 
+// addr = 0x[ffc] : [PDE Index] : [PTE Index * 4]
 int MemoryManager::toPTE(const int virtualAddress)
 {
     return (0xffc00000 + ((virtualAddress & 0xffc00000) >> 10) + (((virtualAddress & 0x003ff000) >> 12) * 4));

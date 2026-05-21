@@ -15,11 +15,11 @@ public:
     // 可管理的内存容量
     int totalMemory;
     // 内核物理地址池
-    AddressPool kernelPhysical;
+    AddressPool<PA> kernelPhysical;
     // 用户物理地址池
-    AddressPool userPhysical;
+    AddressPool<PA> userPhysical;
     // 内核虚拟地址池
-    AddressPool kernelVirtual;
+    AddressPool<VA> kernelVirtual;
 
 public:
     MemoryManager();

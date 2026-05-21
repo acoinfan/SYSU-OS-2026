@@ -1,4 +1,10 @@
 target remote:1234
 file ../build/kernel.o
-b MemoryManager::openPageMechanism
 set disassembly-flavor intel
+b Buddy::initialize
+c
+b 128
+b 107
+b 118
+b memset
+layout src

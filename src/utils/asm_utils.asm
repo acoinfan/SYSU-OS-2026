@@ -14,7 +14,11 @@ global asm_interrupt_status
 global asm_switch_thread
 global asm_atomic_exchange
 global asm_init_page_reg
+global asm_get_page_error_addr
+
 extern c_time_interrupt_handler
+extern c_page_fault_handler
+
 ASM_UNHANDLED_INTERRUPT_INFO db 'Unhandled interrupt happened, halt...'
                              db 0
 ASM_IDTR dw 0
@@ -174,6 +178,14 @@ asm_lidt:
     lidt [ASM_IDTR]
 
     pop eax
+    pop ebp
+    ret
+
+; void* asm_get_page_error_addr()
+asm_get_page_error_addr:
+    push ebp
+    mov ebp, esp
+    mov eax, cr2
     pop ebp
     ret
 

@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-Buddy buddy;
 
 void print_bitmap(char *bitmap, int count)
 {
@@ -16,11 +15,11 @@ void print_bitmap(char *bitmap, int count)
     printf("\n");
 }
 
-void print_freeNodes()
+void print_freeNodes(Buddy* buddy)
 {
     for (int i = 0; i < MAX_ORDER + 1; i++)
     {
-        FreeNode *cnt = buddy.freeArea[i];
+        FreeNode *cnt = buddy->freeArea[i];
         printf("order %d: ", i);
         while (cnt)
         {
