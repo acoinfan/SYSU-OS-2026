@@ -34,7 +34,8 @@ asm_init_page_reg:
     mov eax, [ebp + 4 * 2]
     mov cr3, eax ; 放入页目录表地址
     mov eax, cr0
-    or eax, 0x80000000
+    ; or eax, 0x80000000
+    or eax, 0x80010000     ; 开启写保护
     mov cr0, eax           ; 置PG=1，开启分页机制
 
     pop eax

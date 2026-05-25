@@ -19,6 +19,7 @@ extern "C" void c_page_fault_handler()
 
     uint32 addr = (uint32)asm_get_page_error_addr();
     printf("Page Fault Handler: Page Not Found at address 0x%x\n", addr);
+    asm_halt();
 }
 
 void InterruptManager::initialize()

@@ -18,6 +18,7 @@
 // Buddy Macro
 // description in README
 #define RESERVED_MEMORY 0x400000
+#define KERNEL_VA_POOL_PDE0 0x9E000
 
 #define MAX_TOTAL_NODES 32678
 #define FREENODES_SIZE 0xC0000

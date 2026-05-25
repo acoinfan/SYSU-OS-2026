@@ -110,6 +110,17 @@ void MemoryManager::initialize()
            KERNEL_VIRTUAL_START,
            userPages, kernelPages * PAGE_SIZE / 1024 / 1024,
            kernelVirtualBitMapStart);
+    
+    // printf("0x%x\n", vaddr2paddr(0xC02C0000));
+    // printf("0x100000 %x ;", *(int*) toPDE(0x100000));
+    // // 获取0x100000对应的PTE信息,储存在0x101000 + 4 * 256
+    // printf("0x101400 %x\n", *(int*) toPTE(0x100000));
+
+    // printf("Try to access 0x101000\n");
+    // int value1 = *(int*) 0x101000;
+    // printf("value = %d\n", value1);
+    // *(int*) 0x101000 = 114514;
+    // printf("after value = %d\n", *(int*) 0x101000);
 }
 
 int MemoryManager::allocatePhysicalPages(enum AddressPoolType type, const int count)
@@ -165,45 +176,63 @@ void MemoryManager::openPageMechanism()
     // 线性地址0~4MB对应的页表
     // page = 0x101000, 0x101000开始至0x102000
     int *page = (int *)(PAGE_DIRECTORY + PAGE_SIZE);
+    int *low_page = (int *)KERNEL_VA_POOL_PDE0;
 
     // 初始化页目录表
     memset(directory, 0, PAGE_SIZE);
     // 初始化线性地址0~4MB对应的页表
     memset(page, 0, PAGE_SIZE);
-
+    // 初始化PDE[0]
+    memset(low_page, 0, PAGE_SIZE);
     int address = 0;
     // 将线性地址0~1MB恒等映射到物理地址0~1MB
     for (int i = 0; i < 256; ++i)
     {
         // U/S = 1, R/W = 1, P = 1
         page[i] = address | 0x7;
+        low_page[i] = address | 0x7;
         address += PAGE_SIZE;
     }
+
+    // 1~2MB 分别处理
+    // address = 0x100000;
+    // for (int i = 256; i < 512; ++i)
+    // {
+    //     // U/S = 1, R/W = 0, P = 1
+    //     low_page[i] = address | 0b111;   // 我们认为直接映射可以读写修改
+    //     page[i] = address | 0b101;       // 高空间映射只读
+    //     address += PAGE_SIZE;
+    // }
 
     // 将线性地址2~4MB恒等映射到物理地址2~4MB
     address = 0x200000;
     for (int i = 512; i < 1024; ++i)
     {
         // U/S = 1, R/W = 1, P = 1
+        low_page[i] = address | 0x7;
         page[i] = address | 0x7;
         address += PAGE_SIZE;
     }
     // 初始化页目录项
 
     printf("Building Initial Page Table. Please Wait...\n");
-    // 0~1MB
-    directory[0] = ((int)page) | 0x07;
+    // 0~4MB
+    directory[0] = ((int)low_page) | 0x07;
     // 3GB的内核空间
-    directory[768] = directory[0];
+    directory[768] = ((int)page) | 0x07;
     // 最后一个页目录项指向页目录表
     directory[1023] = ((int)directory) | 0x7;
-    // 769~1022项
 
-    for (int i = 1; i < 254; i++) {
+    // 769~1022项
+    for (int i = 1; i < 255; i++) {
         int* pte = (int*)(PAGE_DIRECTORY + PAGE_SIZE + i * PAGE_SIZE);
         directory[768 + i] = (int)pte | 0x7; 
         memset(pte, 0, PAGE_SIZE);  
     }
+
+    // printf("0x100000 %x ;", *(int*)0x100000);
+    // // 获取0x100000对应的PTE信息,储存在0x101000 + 4 * 256
+    // printf("0x101400 %x\n", *(int*)0x101400);
 
     // 初始化cr3，cr0，开启分页机制
     asm_init_page_reg(directory);
@@ -273,6 +302,11 @@ bool MemoryManager::connectPhysicalVirtualPage(const int virtualAddress, const i
     int *pde = (int *)toPDE(virtualAddress);
     int *pte = (int *)toPTE(virtualAddress);
 
+    // if (virtualAddress >= 0x100000 && virtualAddress < 0x200000) {
+    //     printf("[MAP-BEFORE] v=0x%x pde@0x%x=0x%x pte@0x%x=0x%x new_pa=0x%x\n",
+    //            virtualAddress, pde, *pde, pte, *pte, physicalPageAddress);
+    // }
+
     // 页目录项无对应的页表，先分配一个页表
     if(!(*pde & 0x00000001)) 
     {
@@ -289,8 +323,12 @@ bool MemoryManager::connectPhysicalVirtualPage(const int virtualAddress, const i
     }
 
     // 使页表项指向物理页
+    int old = *pte;
     *pte = physicalPageAddress | 0x7;
 
+    // if (virtualAddress >= 0x100000 && virtualAddress < 0x200000) {
+    //     printf("[MAP-AFTER ] v=0x%x pte old=0x%x new=0x%x\n", virtualAddress, old, *pte);
+    // }
     return true;
 }
 

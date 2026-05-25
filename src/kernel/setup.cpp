@@ -40,6 +40,26 @@ void first_thread(void *arg)
     
     printf("%x\n", p2);
 
+    printf("0x100000 %x ;", *(int*)0x100000);
+    // 获取0x100000对应的PTE信息,储存在0x101000 + 4 * 256
+    printf("0x101400 %x\n", *(int*)0x101400);
+
+    printf("Try to access 0x101000\n");
+    int value0 = *(int*) 0x101000;
+    printf("value = %d\n", value0);
+    *(int*) 0x101000 = value0;
+    printf("after value = %d\n", *(int*) 0x101000);
+
+    printf("Try to access 0xC0101000\n");
+    int value1 = *(int*) 0xC0101000;
+    printf("value = %d\n", value1);
+    *(int*) 0xC0101000 = 114514;
+    printf("after value = %d\n", *(int*) 0xC0101000);
+
+    printf("Try to access 0x40000000\n");
+    int value2 = *(int*) 0x40000000;
+    printf("value = %d\n", value2);
+    *(int*) 0x40000000 = 114514;
     asm_halt();
 }
 
