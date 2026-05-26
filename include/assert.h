@@ -1,0 +1,24 @@
+#ifndef ASSERT_H
+#define ASSERT_H
+
+void assert_fail(
+    const char *expr,
+    const char *file,
+    int line,
+    const char *func
+);
+
+#define ASSERT(expr)                                      \
+do {                                                      \
+    if(!(expr))                                           \
+    {                                                     \
+        assert_fail(                                      \
+            #expr,                                        \
+            __FILE__,                                     \
+            __LINE__,                                     \
+            __func__                                      \
+        );                                                \
+    }                                                     \
+} while(0)
+
+#endif
