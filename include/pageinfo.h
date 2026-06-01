@@ -6,7 +6,7 @@
 #define PAGE_SHIFT 12
 #define PA2PGI(PA) (((unsigned) (PA)) >> (PAGE_SHIFT))
 
-enum PageFlags {
+enum PageFlags : uint16 {
     PG_RESERVED =1<<0,   // 系统保留
 
     PG_FREE     =1<<1,   // buddy空闲页
@@ -18,6 +18,8 @@ enum PageFlags {
     PG_ZERO     =1<<4,   // 零页
 
     PG_KERNEL   =1<<5,   // 内核页
+
+    PG_ALL      =0xFFFF
 };
 /*
 Kernel保留: PG_RESERVED | PG_KERNEL
@@ -52,8 +54,10 @@ struct PageInfo {
     uint16 decRef(void);
     uint16 getRef(void) const;
     void setFlag(PageFlags flag);
+    void setFlag(uint16 mask);
     bool hasFlag(PageFlags flag) const;
     void clearFlag(PageFlags flag);
+    void clearFlag(uint16 mask);
     void clear();
     void dump(void) const;
 };

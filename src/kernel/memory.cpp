@@ -30,7 +30,7 @@ void MemoryManager::initialize()
     
     // Parameters
     int maxPages = ALIGN(PAGE_SIZE, (this->totalMemory) / 2) / PAGE_SIZE;
-
+    int totalPages = ALIGN(PAGE_SIZE, this->totalMemory) / PAGE_SIZE;
     // PA Para
     int PAfreeNodeListSize = ALIGN(PAGE_SIZE, maxPages * sizeof(FreeNode));
     int PAfreeNodeBitMapSize = ALIGN(PAGE_SIZE, (maxPages+7)/8);
@@ -38,9 +38,9 @@ void MemoryManager::initialize()
     // VA Para
     int VABitMapSize = KERNEL_VA_BITMAP_SIZE;
     // PageInfo Para
-    int PageInfoSize = ALIGN(PAGE_SIZE, maxPages * sizeof(PageInfo));
+    int PageInfoSize = ALIGN(PAGE_SIZE, totalPages * sizeof(PageInfo));
     // RMapManager Para
-    int RMapNodeCount = 1.5 * maxPages;
+    int RMapNodeCount = 1.5 * totalPages;
     int RMapNodeListSize = ALIGN(PAGE_SIZE, RMapNodeCount * sizeof(RMapEntry));
     int RMapBitMapSize = ALIGN(PAGE_SIZE, (RMapNodeCount+7)/8);
 
@@ -117,7 +117,7 @@ void MemoryManager::initialize()
     #define PAStart2VAStart(PAStart) ((PAStart) - (RESERVED_MEMORY) + (KERNEL_VIRTUAL_START))
 
     // 更新起始点
-    // 坑: 不要修改PAStart
+    // 坑: 不要修改PAStart和VAStart
     kernelPhysicalBitMapStart = PAStart2VAStart(kernelPhysicalBitMapStart);
     kernelPAFreeNodeBitMapStart = PAStart2VAStart(kernelPAFreeNodeBitMapStart);
     kernelPAFreeNodeListStart = PAStart2VAStart(kernelPAFreeNodeListStart);
@@ -126,7 +126,6 @@ void MemoryManager::initialize()
     userPAFreeNodeBitMapStart = PAStart2VAStart(userPAFreeNodeBitMapStart);
     userPAFreeNodeListStart = PAStart2VAStart(userPAFreeNodeListStart);
 
-    kernelVirtualStartAddress = PAStart2VAStart(kernelVirtualStartAddress);
     kernelVirtualBitMapStart = PAStart2VAStart(kernelVirtualBitMapStart);
 
     RMapNodeListStart = PAStart2VAStart(RMapNodeListStart);
@@ -156,8 +155,6 @@ void MemoryManager::initialize()
 
     // clean RMap
     memset((void*)RMapNodeListStart, 0, RMapNodeListSize);
-
-    pageinfos[0].dump();
 
     // Set Kernel Pages
     kernelPhysical.initialize(
@@ -448,13 +445,11 @@ bool MemoryManager::connectPhysicalVirtualPage(const int virtualAddress, const i
 {
     // 计算虚拟地址对应的页目录项和页表项
     int *pde = (int *)toPDE(virtualAddress);
-    int *pte = (int *)toPTE(virtualAddress);
-
     // if (virtualAddress >= 0x100000 && virtualAddress < 0x200000) {
     //     printf("[MAP-BEFORE] v=0x%x pde@0x%x=0x%x pte@0x%x=0x%x new_pa=0x%x\n",
     //            virtualAddress, pde, *pde, pte, *pte, physicalPageAddress);
     // }
-
+    int *pte;
     // 页目录项无对应的页表，先分配一个页表
     if(!(*pde & 0x00000001)) 
     {
@@ -463,17 +458,20 @@ bool MemoryManager::connectPhysicalVirtualPage(const int virtualAddress, const i
         if (!page)
             return false;
         else {
+            pageinfos[PA2PGI(page)].clear();
             pageinfos[PA2PGI(page)].incRef();
-            pageinfos[PA2PGI(page)].setFlag(PG_KERNEL);
+            pageinfos[PA2PGI(page)].setFlag(PG_KERNEL | PG_LOCKED);
         }
         // 使页目录项指向页表
         *pde = page | 0x7;
         // 初始化页表
+        pte = (int *)toPTE(virtualAddress);
         char *pagePtr = (char *)(((int)pte) & 0xfffff000);
         memset(pagePtr, 0, PAGE_SIZE);
     }
 
     // 使页表项指向物理页
+    pte = (int *)toPTE(virtualAddress);
     int old = *pte;
     *pte = physicalPageAddress | 0x7;
 
@@ -481,8 +479,11 @@ bool MemoryManager::connectPhysicalVirtualPage(const int virtualAddress, const i
     //     printf("[MAP-AFTER ] v=0x%x pte old=0x%x new=0x%x\n", virtualAddress, old, *pte);
     // }
 
-    // 增加ref项, 这个应该交给
-    pageinfos[PA2PGI(physicalPageAddress)].incRef();
+    // 绑定rmap
+    int owner = programManager.running ? programManager.running->pid : 0;
+    rmapManager.attach(&pageinfos[PA2PGI(physicalPageAddress)], (uint32)pte, owner);
+    printf("bind VA=0x%x to PA=0x%x\n", virtualAddress, physicalPageAddress);
+    pageinfos[PA2PGI(physicalPageAddress)].dump();
     return true;
 }
 
@@ -506,13 +507,19 @@ void MemoryManager::releasePages(enum AddressPoolType type, const int virtualAdd
     {
         // 第一步，对每一个虚拟页，释放为其分配的物理页
         int paddr = vaddr2paddr(vaddr);
-        if (pageinfos[PA2PGI(paddr)].decRef() == 0) {
+        int owner = programManager.running ? programManager.running->pid : 0;
+        pte = (int *)toPTE(vaddr);
+        printf("try Free VA=0x%x, PA=0x%x\n", vaddr, paddr);
+        pageinfos[PA2PGI(paddr)].dump();
+        rmapManager.detach(&pageinfos[PA2PGI(paddr)], (uint32)pte, owner);
+        pageinfos[PA2PGI(paddr)].dump();
+        if (pageinfos[PA2PGI(paddr)].getRef() == 0) {
             pageinfos[PA2PGI(paddr)].setFlag(PG_FREE);
             releasePhysicalPages(type, paddr, 1);
+            printf("Free VA=0x%x, PA=0x%x\n", vaddr, paddr);
         }
 
         // 设置页表项为不存在，防止释放后被再次使用
-        pte = (int *)toPTE(vaddr);
         *pte = 0;
 
         // TODO: 分析页表是否可以被释放, 如果释放记得减小ref

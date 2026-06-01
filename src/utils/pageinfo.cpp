@@ -20,8 +20,16 @@ void PageInfo::setFlag(PageFlags flag) {
     this->flags |= flag;
 }
 
+void PageInfo::setFlag(uint16 mask) {
+    this->flags |= mask;
+}
+
 void PageInfo::clearFlag(PageFlags flag) {
     this->flags &= (~flag);
+}
+
+void PageInfo::clearFlag(uint16 mask) {
+    this->flags &= (~mask);
 }
 
 bool PageInfo::hasFlag(PageFlags flag) const {

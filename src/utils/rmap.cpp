@@ -3,7 +3,7 @@
 #include "stdlib.h"
 
 void RMapManager::initialize(int _length, RMapEntry* _RMapStart, char* _bitmap) {
-    memset(_bitmap, 0, (length + 7) / 8);
+    memset(_bitmap, 0, (_length + 7) / 8);
     bitmap.initialize(_bitmap, _length);
     RMapStart = _RMapStart;
     length = _length;
@@ -38,6 +38,7 @@ void RMapManager::detach(PageInfo* pi, uint32 pte_addr, uint16 owner) {
     if (RMapStart[idx].pte_addr == pte_addr && RMapStart[idx].owner == owner) {
         pi->extra = RMapStart[idx].next;
         this->release(idx);
+        pi->decRef();
         return;
     }
     idx = RMapStart[idx].next;
@@ -46,11 +47,13 @@ void RMapManager::detach(PageInfo* pi, uint32 pte_addr, uint16 owner) {
         if (RMapStart[idx].pte_addr == pte_addr && RMapStart[idx].owner == owner) {
             RMapStart[prev].next = RMapStart[idx].next;
             this->release(idx);
+            pi->decRef();
             return;
         }    
         prev = idx;
         idx = RMapStart[idx].next;   
     }
+    // Should Never Reach Here
     pi->decRef();
     ASSERT(0);
     return;

@@ -24,6 +24,9 @@ void first_thread(void *arg)
     //     stdio.print(' ');
     // }
     // stdio.moveCursor(0);
+    char* p0 = (char *)memoryManager.allocatePages(AddressPoolType::KERNEL, 1);
+    memoryManager.releasePages(AddressPoolType::KERNEL, (int)p0, 1);
+    // asm_halt();
     char *p1 = (char *)memoryManager.allocatePages(AddressPoolType::KERNEL, 100);
     char *p2 = (char *)memoryManager.allocatePages(AddressPoolType::KERNEL, 10);
     char *p3 = (char *)memoryManager.allocatePages(AddressPoolType::KERNEL, 100);
