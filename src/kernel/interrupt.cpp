@@ -5,69 +5,63 @@
 #include "stdio.h"
 #include "os_modules.h"
 #include "program.h"
+#include "handler.h"
+#include "pageinfo.h"
 
 int times = 0;
 extern "C" void c_page_fault_handler()
 {
-    enum struct FaultType : uint8 {
-        DEMAND_ZERO = 0,
-        STACK_GROWTH,
-        HEAP_GROWTH,
-        SWAP_IN,
-        COPY_ON_WRITE,
-        FILE_BACKED,
-        PERMISSION_VIOLATION,
-        KERNEL_RESERVED,
-        INVALID_ADDRESS,
-        OUT_OF_MEMORY,
-        PAGE_TABLE_BROKEN,
-        UNKNOWN
-    };
+    bool from_user = false;
     FaultType faultType = FaultType::UNKNOWN;
-    int owner = programManager.running ? programManager.running->pid : 0;
+    uint32 addr = (uint32)asm_get_page_error_addr();
+    uint32 PDE = *(uint32*)memoryManager.toPDE(addr);
+    uint32 PTE = 0;
+    if (!(PDE & PTE_PRESENT)) {
+        faultType = FaultType::PAGE_TABLE_BROKEN;
+        printf("Page Fault: PAGE_TABLE_BROKEN, halt\n");
+        asm_halt();
+    } else {
+        PTE = *(uint32*)memoryManager.toPTE(addr);
+
+        if (!(PTE & PTE_PRESENT)) {
+            // Demand Zero
+            if ((PTE & PTE_WRITABLE) && (PTE & PTE_LAZY)) {
+                faultType = FaultType::DEMAND_ZERO;
+            // File Backed (TO DO)
+            } else if (memoryManager.pageinfos[PA2PGI(PTE & PTE_GET_ADDRESS)].hasFlag(PG_FILE)) {
+                faultType = FaultType::FILE_BACKED;
+            // Swap In
+            } else if (PTE & PTE_SWAP) {
+                faultType = FaultType::SWAP_IN;
+            } else {
+                faultType = FaultType::INVALID_ADDRESS;
+            }
+        } else {
+            uint32 paddr = PTE & PTE_GET_ADDRESS;
+            // Kernel Reserved
+            if (memoryManager.pageinfos[PA2PGI(paddr)].hasFlag(PG_KERNEL) && memoryManager.pageinfos[PA2PGI(paddr)].hasFlag(PG_RESERVED)) {
+                faultType = FaultType::KERNEL_RESERVED;
+            // Copy On Write
+            } else if ((!(PTE & PTE_WRITABLE)) && (PTE & PTE_COW)) {
+                faultType = FaultType::COPY_ON_WRITE;\
+            // Permission Violation
+            } else if (((!(PTE & PTE_WRITABLE)) || (from_user && !(PTE & PTE_USER_ACCESS))) && (!(PTE & PTE_COW))) {
+                faultType = FaultType::PERMISSION_VIOLATION;
+            }
+        }
+    }
+
+    PageFaultInfo info = {faultType, addr, (uint32*)memoryManager.toPDE(addr), 
+                            (uint32*)memoryManager.toPTE(addr)};
+    if (from_user) {
+        bool res = handle_user_page_fault(info);
+    } else {
+        handle_kernel_page_fault(info);
+    }
 
     printf("faultType = %d\n", (int)faultType);
-
-    // 获取地址
-    uint32 addr = (uint32)asm_get_page_error_addr();
-
-    // 查询对应列表项
-    uint32 PDE = *(uint32*)memoryManager.toPDE(addr);
-    uint32 PTE = *(uint32*)memoryManager.toPTE(addr);
-
-    if (!(PDE & 1)) faultType = FaultType::PAGE_TABLE_BROKEN;
-    // 查询对应权限项
-    int present = (PTE & 1);
-    int RW = (PTE & (1 << 1)) >> 1; 
-    int US = (PTE & (1 << 2)) >> 2;
-    int access = (PTE & (1 << 5)) >> 5;
-
-    // present = 1, RW = 0: COW
-    if (present && !RW) {
-        printf("COW\n");
-        ;
-    }
-    // present = 0, Page Fault
-    else if (!present) {
-        printf("Load Page\n");
-        // src
-            // in Swap
-
-            // on Disk
-
-            // Not Found
-
-        // dst
-            // get PA
-
-            // evict
-            
-
-    }
-
     printf("Page Fault Handler: Page Not Found at address 0x%x\n", addr);
-    printf("PTE: %x\n", PTE);
-    asm_halt();
+    return;
 }
 
 

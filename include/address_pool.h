@@ -17,13 +17,13 @@ class AddressPool<VA>
 {
 public:
     BitMap resources;
-    int startAddress;
+    uint32 startAddress;
 
 public:
     AddressPool() {}
 
     // 初始化地址池
-    void initialize(char *bitmap, const int length, const int startAddress)
+    void initialize(char *bitmap, const int length, const uint32 startAddress)
     {
         resources.initialize(bitmap, length);
         this->startAddress = startAddress;
@@ -37,7 +37,7 @@ public:
     }
 
     // 释放若干页的空间
-    void release(const int address, const int amount)
+    void release(const uint32 address, const int amount)
     {
         resources.release((address - startAddress) / PAGE_SIZE, amount);
     }
@@ -48,13 +48,13 @@ class AddressPool<PA>
 {
 public:
     Buddy resources;
-    int startAddress;
+    uint32 startAddress;
 
 public:
     AddressPool() {}
 
     // 初始化地址池
-    void initialize(char *bitmap, const int length, const int startAddress, char* freeBitMap, FreeNode* freeNodes)
+    void initialize(char *bitmap, const int length, const uint32 startAddress, char* freeBitMap, FreeNode* freeNodes)
     {
         resources.initialize(bitmap, length, freeBitMap, freeNodes);
         this->startAddress = startAddress;
@@ -68,7 +68,7 @@ public:
     }
 
     // 释放若干页的空间
-    void release(const int address, const int amount)
+    void release(const uint32 address, const int amount)
     {
         resources.release((address - startAddress) / PAGE_SIZE, amount);
     }

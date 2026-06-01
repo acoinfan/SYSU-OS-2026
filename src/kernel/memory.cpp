@@ -384,7 +384,7 @@ void MemoryManager::openPageMechanism()
     printf("open page mechanism\n");
 }
 
-int MemoryManager::allocatePages(enum AddressPoolType type, const int count)
+int MemoryManager::allocatePages(enum AddressPoolType type, const int count, uint16 flags)
 {
     // 第一步：从虚拟地址池中分配若干虚拟页
     int virtualAddress = allocateVirtualPages(type, count);
@@ -409,7 +409,7 @@ int MemoryManager::allocatePages(enum AddressPoolType type, const int count)
             //printf("allocate physical page 0x%x\n", physicalPageAddress);
 
             // 第三步：为虚拟页建立页目录项和页表项，使虚拟页内的地址经过分页机制变换到物理页内。
-            flag = connectPhysicalVirtualPage(vaddress, physicalPageAddress);
+            flag = connectPhysicalVirtualPage(vaddress, physicalPageAddress, flags);
         }
         else
         {
@@ -429,7 +429,7 @@ int MemoryManager::allocatePages(enum AddressPoolType type, const int count)
     return virtualAddress;
 }
 
-int MemoryManager::allocateVirtualPages(enum AddressPoolType type, const int count)
+int MemoryManager::allocateVirtualPages(enum AddressPoolType type, const int count, uint16 flags)
 {
     int start = -1;
 
@@ -449,7 +449,7 @@ bool MemoryManager::connectPhysicalVirtualPage(const int virtualAddress, const i
     //     printf("[MAP-BEFORE] v=0x%x pde@0x%x=0x%x pte@0x%x=0x%x new_pa=0x%x\n",
     //            virtualAddress, pde, *pde, pte, *pte, physicalPageAddress);
     // }
-    int *pte;
+    int *pte = (int *)toPTE(virtualAddress);
     // 页目录项无对应的页表，先分配一个页表
     if(!(*pde & 0x00000001)) 
     {
@@ -465,13 +465,11 @@ bool MemoryManager::connectPhysicalVirtualPage(const int virtualAddress, const i
         // 使页目录项指向页表
         *pde = page | 0x7;
         // 初始化页表
-        pte = (int *)toPTE(virtualAddress);
         char *pagePtr = (char *)(((int)pte) & 0xfffff000);
         memset(pagePtr, 0, PAGE_SIZE);
     }
 
     // 使页表项指向物理页
-    pte = (int *)toPTE(virtualAddress);
     int old = *pte;
     *pte = physicalPageAddress | 0x7;
 

@@ -40,7 +40,8 @@ enum PTEFlags {
     PTE_DIRTY      =1<<6,
     PTE_COW        =1<<9,
     PTE_SWAP       =1<<10,
-    PTE_LAZY       =1<<11
+    PTE_LAZY       =1<<11,
+    PTE_GET_ADDRESS=0xfffff000
 };
 
 struct PageInfo {
