@@ -52,3 +52,11 @@ void memset(void *memory, char value, int length)
 int ceil(const int dividend, const int divisor) {
     return (dividend + divisor - 1) / divisor;
 }
+
+extern "C" {
+
+void __cxa_atexit(void (*)(void *), void *, void *) {}
+
+void *__dso_handle = (void *)0;
+
+}

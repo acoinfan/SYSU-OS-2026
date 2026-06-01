@@ -37,6 +37,7 @@ void MemoryManager::initialize()
     int PABitMapSize = ALIGN(PAGE_SIZE, (maxPages+7)/8);
     // VA Para
     int VABitMapSize = KERNEL_VA_BITMAP_SIZE;
+    int VAPrevilegeSize = ALIGN(PAGE_SIZE, KERNEL_VA_BITMAP_SIZE * 8 * sizeof(VPageFlags));
     // PageInfo Para
     int PageInfoSize = ALIGN(PAGE_SIZE, totalPages * sizeof(PageInfo));
     // RMapManager Para
@@ -64,6 +65,8 @@ void MemoryManager::initialize()
     // KernelVA Pool
     int kernelVirtualBitMapStart = usedMemory;
     usedMemory += VABitMapSize;
+    int kernelVirtualPrivilegeStart = usedMemory;
+    usedMemory += VAPrevilegeSize;
 
     // PageInfo
     pageinfos = (PageInfo*)usedMemory;
@@ -127,6 +130,7 @@ void MemoryManager::initialize()
     userPAFreeNodeListStart = PAStart2VAStart(userPAFreeNodeListStart);
 
     kernelVirtualBitMapStart = PAStart2VAStart(kernelVirtualBitMapStart);
+    kernelVirtualPrivilegeStart = PAStart2VAStart(kernelVirtualPrivilegeStart);
 
     RMapNodeListStart = PAStart2VAStart(RMapNodeListStart);
     RMapBitMapStart = PAStart2VAStart(RMapBitMapStart);
@@ -149,6 +153,9 @@ void MemoryManager::initialize()
     // clean FreeNodeList
     memset((void*)kernelPAFreeNodeListStart, 0, PAfreeNodeListSize);
     memset((void*)userPAFreeNodeListStart, 0, PAfreeNodeListSize);
+    
+    // clean Privileges
+    memset((void*)kernelVirtualPrivilegeStart, 0, VAPrevilegeSize);
 
     // clean PageInfo
     memset((void*)pageinfos, 0, PageInfoSize);
@@ -176,7 +183,9 @@ void MemoryManager::initialize()
     kernelVirtual.initialize(
         (char *)kernelVirtualBitMapStart,
         kernelVirtualPages,
-        kernelVirtualStartAddress);
+        kernelVirtualStartAddress,
+        KERNEL_VIRTUAL_END,
+        kernelVirtualPrivilegeStart);
         
     rmapManager.initialize(RMapNodeCount, 
         (RMapEntry*)RMapNodeListStart, 
@@ -217,10 +226,12 @@ void MemoryManager::initialize()
     printf("kernel virtual pool\n"
            "    start address: 0x%x\n"
            "    total pages: %d  ( %d MB ) \n"
-           "    bit map start address: 0x%x\n",
+           "    bit map start address: 0x%x\n"
+           "    privileges start address: 0x%x\n",
            kernelVirtualStartAddress,
            userPages, kernelVirtualPages * PAGE_SIZE / 1024 / 1024,
-           kernelVirtualBitMapStart);
+           kernelVirtualBitMapStart,
+           kernelVirtualPrivilegeStart);
     
     printf("Free Node List:\n"
             "   kernel start address: 0x%x\n"
@@ -384,10 +395,10 @@ void MemoryManager::openPageMechanism()
     printf("open page mechanism\n");
 }
 
-int MemoryManager::allocatePages(enum AddressPoolType type, const int count, uint16 flags)
+int MemoryManager::allocatePages(enum AddressPoolType type, const int count, const VPageFlags vFlag)
 {
     // 第一步：从虚拟地址池中分配若干虚拟页
-    int virtualAddress = allocateVirtualPages(type, count);
+    int virtualAddress = allocateVirtualPages(type, count, vFlag);
 
     if (!virtualAddress)
     {
@@ -409,7 +420,7 @@ int MemoryManager::allocatePages(enum AddressPoolType type, const int count, uin
             //printf("allocate physical page 0x%x\n", physicalPageAddress);
 
             // 第三步：为虚拟页建立页目录项和页表项，使虚拟页内的地址经过分页机制变换到物理页内。
-            flag = connectPhysicalVirtualPage(vaddress, physicalPageAddress, flags);
+            flag = connectPhysicalVirtualPage(vaddress, physicalPageAddress);
         }
         else
         {
@@ -429,13 +440,13 @@ int MemoryManager::allocatePages(enum AddressPoolType type, const int count, uin
     return virtualAddress;
 }
 
-int MemoryManager::allocateVirtualPages(enum AddressPoolType type, const int count, uint16 flags)
+int MemoryManager::allocateVirtualPages(enum AddressPoolType type, const int count, const VPageFlags vFlag)
 {
     int start = -1;
 
     if (type == AddressPoolType::KERNEL)
     {
-        start = kernelVirtual.allocate(count);
+        start = kernelVirtual.allocate(count, vFlag);
     }
 
     return (start == -1) ? 0 : start;
@@ -462,7 +473,8 @@ bool MemoryManager::connectPhysicalVirtualPage(const int virtualAddress, const i
             pageinfos[PA2PGI(page)].incRef();
             pageinfos[PA2PGI(page)].setFlag(PG_KERNEL | PG_LOCKED);
         }
-        // 使页目录项指向页表
+        // 使页目录项指向页表, 同时设置权限位
+
         *pde = page | 0x7;
         // 初始化页表
         char *pagePtr = (char *)(((int)pte) & 0xfffff000);
@@ -471,7 +483,18 @@ bool MemoryManager::connectPhysicalVirtualPage(const int virtualAddress, const i
 
     // 使页表项指向物理页
     int old = *pte;
-    *pte = physicalPageAddress | 0x7;
+    PTEFlags pteFlag;
+    // 属于 Kernel VAPool
+    if (memoryManager.kernelVirtual.isValidAddr(virtualAddress)) {
+        pteFlag = vPageFlags2PTE(memoryManager.kernelVirtual.getVPageFlag(virtualAddress));
+    // TODO: User VAPool
+    } else if (1) {
+        asm_halt();
+    // 非法地址
+    } else { 
+        ASSERT(0);
+    }
+    *pte = physicalPageAddress | pteFlag | PTE_PRESENT;
 
     // if (virtualAddress >= 0x100000 && virtualAddress < 0x200000) {
     //     printf("[MAP-AFTER ] v=0x%x pte old=0x%x new=0x%x\n", virtualAddress, old, *pte);
@@ -480,6 +503,7 @@ bool MemoryManager::connectPhysicalVirtualPage(const int virtualAddress, const i
     // 绑定rmap
     int owner = programManager.running ? programManager.running->pid : 0;
     rmapManager.attach(&pageinfos[PA2PGI(physicalPageAddress)], (uint32)pte, owner);
+    // DEBUG:
     printf("bind VA=0x%x to PA=0x%x\n", virtualAddress, physicalPageAddress);
     pageinfos[PA2PGI(physicalPageAddress)].dump();
     return true;
@@ -503,10 +527,14 @@ void MemoryManager::releasePages(enum AddressPoolType type, const int virtualAdd
     int *pte;
     for (int i = 0; i < count; ++i, vaddr += PAGE_SIZE)
     {
-        // 第一步，对每一个虚拟页，释放为其分配的物理页
+        // 第一步，对每一个虚拟页，释放为其分配的物理页, 若属于Lazy Alloc, 则不处理
+        pte = (int *)toPTE(vaddr);
+        if ((*pte) & PTE_LAZY) {
+            continue;
+        }
         int paddr = vaddr2paddr(vaddr);
         int owner = programManager.running ? programManager.running->pid : 0;
-        pte = (int *)toPTE(vaddr);
+        // DEBUG:
         printf("try Free VA=0x%x, PA=0x%x\n", vaddr, paddr);
         pageinfos[PA2PGI(paddr)].dump();
         rmapManager.detach(&pageinfos[PA2PGI(paddr)], (uint32)pte, owner);
@@ -514,6 +542,7 @@ void MemoryManager::releasePages(enum AddressPoolType type, const int virtualAdd
         if (pageinfos[PA2PGI(paddr)].getRef() == 0) {
             pageinfos[PA2PGI(paddr)].setFlag(PG_FREE);
             releasePhysicalPages(type, paddr, 1);
+            // DEBUG:
             printf("Free VA=0x%x, PA=0x%x\n", vaddr, paddr);
         }
 
@@ -541,4 +570,35 @@ void MemoryManager::releaseVirtualPages(enum AddressPoolType type, const int vad
     {
         kernelVirtual.release(vaddr, count);
     }
+}
+
+int MemoryManager::allocatePagesLazy(enum AddressPoolType type, const VPageFlags flag) {
+    int vaddr = allocateVirtualPages(type, 1, flag);
+    if (vaddr == -1) return -1;
+
+    // 计算虚拟地址对应的页目录项和页表项
+    int *pde = (int *)toPDE(vaddr);
+
+    int *pte = (int *)toPTE(vaddr);
+    // 页目录项无对应的页表，先分配一个页表
+    if(!(*pde & 0x00000001)) 
+    {
+        // 从内核物理地址空间中分配一个页表
+        int page = allocatePhysicalPages(AddressPoolType::KERNEL, 1);
+        if (!page)
+            return false;
+        else {
+            pageinfos[PA2PGI(page)].clear();
+            pageinfos[PA2PGI(page)].incRef();
+            pageinfos[PA2PGI(page)].setFlag(PG_KERNEL | PG_LOCKED);
+        }
+        // 使页目录项指向页表, 同时设置权限位
+
+        *pde = page | 0x7;
+        // 初始化页表
+        char *pagePtr = (char *)(((int)pte) & 0xfffff000);
+        memset(pagePtr, 0, PAGE_SIZE);
+    }    
+    *pte = PTE_LAZY | PTE_WRITABLE;
+    return vaddr;
 }

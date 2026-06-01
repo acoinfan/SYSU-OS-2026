@@ -3,19 +3,23 @@
 
 #include "list.h"
 #include "thread.h"
+#include "scheduler.h"
 
-
-#define ListItem2PCB(ADDRESS, LIST_ITEM) ((PCB *)((int)(ADDRESS) - (int)&((PCB *)0)->LIST_ITEM))
+// #define ListItem2PCB(ADDRESS, LIST_ITEM) ((PCB *)((int)(ADDRESS) - (int)&((PCB *)0)->LIST_ITEM))
 
 class ProgramManager
 {
 public:
     List allPrograms;   // 所有状态的线程/进程的队列
-    List readyPrograms; // 处于ready(就绪态)的线程/进程的队列
     PCB *running;       // 当前执行的线程
+    SchedulerType sType;      // 当前 scheduler 类型
+    RRScheduler rrScheduler;
+    FIFSScheduler fifsScheduler;
 public:
     ProgramManager();
-    void initialize();
+    ~ProgramManager();
+    
+    void initialize(SchedulerType _sType);
 
     // 创建一个线程并放入就绪队列
 
@@ -35,6 +39,9 @@ public:
 
     // 执行线程调度
     void schedule();
+
+    // 切换线程调度器
+    void switch_scheduler(SchedulerType type);
 
 
     //

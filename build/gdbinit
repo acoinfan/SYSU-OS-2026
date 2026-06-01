@@ -2,7 +2,7 @@ target remote:1234
 file ../build/kernel.o
 set disassembly-flavor intel
 set pagination off
-watch *(unsigned int*)0xC01AC528
+b ProgramManager::schedule
 # 停在内核入口后再开监控更稳妥
 break setup_kernel
 commands

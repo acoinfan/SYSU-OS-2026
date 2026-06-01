@@ -5,6 +5,7 @@
 #include "thread.h"
 #include "sync.h"
 #include "memory.h"
+#include "address_pool.h"
 
 // 屏幕IO处理器
 STDIO stdio;
@@ -24,21 +25,23 @@ void first_thread(void *arg)
     //     stdio.print(' ');
     // }
     // stdio.moveCursor(0);
-    char* p0 = (char *)memoryManager.allocatePages(AddressPoolType::KERNEL, 1);
+    char* p0 = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, VP_RW);
+    *p0 = 0;
     memoryManager.releasePages(AddressPoolType::KERNEL, (int)p0, 1);
-    // asm_halt();
-    char *p1 = (char *)memoryManager.allocatePages(AddressPoolType::KERNEL, 100);
-    char *p2 = (char *)memoryManager.allocatePages(AddressPoolType::KERNEL, 10);
-    char *p3 = (char *)memoryManager.allocatePages(AddressPoolType::KERNEL, 100);
+
+    char *p1 = (char *)memoryManager.allocatePages(AddressPoolType::KERNEL, 100, VP_RW);
+    char *p2 = (char *)memoryManager.allocatePages(AddressPoolType::KERNEL, 10, VP_RW);
+    char *p3 = (char *)memoryManager.allocatePages(AddressPoolType::KERNEL, 100, VP_RW);
 
     printf("%x %x %x\n", p1, p2, p3);
+    *p3 = 0xFF;
 
     memoryManager.releasePages(AddressPoolType::KERNEL, (int)p2, 10);
-    p2 = (char *)memoryManager.allocatePages(AddressPoolType::KERNEL, 100);
+    p2 = (char *)memoryManager.allocatePages(AddressPoolType::KERNEL, 100, VP_RW);
 
     printf("%x\n", p2);
 
-    p2 = (char *)memoryManager.allocatePages(AddressPoolType::KERNEL, 10);
+    p2 = (char *)memoryManager.allocatePages(AddressPoolType::KERNEL, 10, VP_RW);
     
     printf("%x\n", p2);
     printf("0x100000 %x ;", *(int*)0x100000);
@@ -69,18 +72,18 @@ extern "C" void setup_kernel()
 
     // 中断管理器
     interruptManager.initialize();
-    interruptManager.enableTimeInterrupt();
     interruptManager.setTimeInterrupt((void *)asm_time_interrupt_handler);
 
     // 输出管理器
     stdio.initialize();
 
     // 进程/线程管理器
-    programManager.initialize();
+    programManager.initialize(SchedulerType::RR);
 
     // 内存管理器
     memoryManager.openPageMechanism();
     memoryManager.initialize();
+
 
     // 创建第一个线程
     int pid = programManager.executeThread(first_thread, nullptr, "first thread", 1);
@@ -90,12 +93,21 @@ extern "C" void setup_kernel()
         asm_halt();
     }
 
-    ListItem *item = programManager.readyPrograms.front();
-    PCB *firstThread = ListItem2PCB(item, tagInGeneralList);
-    firstThread->status = RUNNING;
-    programManager.readyPrograms.pop_front();
+    PCB* firstThread;
+    
+    switch (programManager.sType) {
+        case SchedulerType::RR:
+            firstThread = programManager.rrScheduler.pickNext();
+            break;
+        case SchedulerType::FIFS:
+            firstThread = programManager.fifsScheduler.pickNext();
+            break;
+    }
+    firstThread->status = ProgramStatus::RUNNING;
     programManager.running = firstThread;
-    asm_switch_thread(0, firstThread);
 
+    // 第一次切换 pid=0
+    asm_switch_thread(nullptr, firstThread);
+    interruptManager.enableTimeInterrupt();
     asm_halt();
 }

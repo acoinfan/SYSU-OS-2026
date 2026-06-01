@@ -46,10 +46,13 @@ public:
     void openPageMechanism();
 
     // 页内存分配
-    int allocatePages(enum AddressPoolType type, const int count);
+    int allocatePages(enum AddressPoolType type, const int count, const VPageFlags flag);
+
+    // 页内存懒分配
+    int allocatePagesLazy(enum AddressPoolType type, const VPageFlags flag);
 
     // 虚拟页分配
-    int allocateVirtualPages(enum AddressPoolType type, const int count);
+    int allocateVirtualPages(enum AddressPoolType type, const int count, const VPageFlags flag);
 
     // 建立虚拟页到物理页的联系
     bool connectPhysicalVirtualPage(const int virtualAddress, const int physicalPageAddress);

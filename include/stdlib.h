@@ -18,4 +18,5 @@ void itos(char *numStr, uint32 num, uint32 mod);
 void memset(void *memory, char value, int length);
 // 上取整
 int ceil(const int dividend, const int divisor);
+
 #endif

@@ -60,7 +60,7 @@ extern "C" void c_page_fault_handler()
     }
 
     printf("faultType = %d\n", (int)faultType);
-    printf("Page Fault Handler: Page Not Found at address 0x%x\n", addr);
+    printf("Page Fault Handler: Hit at address 0x%x\n", addr);
     return;
 }
 
@@ -69,14 +69,16 @@ extern "C" void c_page_fault_handler()
 extern "C" void c_time_interrupt_handler()
 {
     PCB *cur = programManager.running;
-
-    if (cur->ticks)
-    {
-        --cur->ticks;
-        ++cur->ticksPassedBy;
-    }
-    else
-    {
+    bool cond = false;
+    switch (programManager.sType) {
+        case SchedulerType::RR:
+            cond = programManager.rrScheduler.onTick(cur);
+            break;
+        case SchedulerType::FIFS:
+            cond = programManager.fifsScheduler.onTick(cur);
+            break;
+    } 
+    if (cond) {
         programManager.schedule();
     }
 }

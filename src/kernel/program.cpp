@@ -10,26 +10,35 @@ const int PCB_SIZE = 4096;                   // PCB的大小，4KB。
 char PCB_SET[PCB_SIZE * MAX_PROGRAM_AMOUNT]; // 存放PCB的数组，预留了MAX_PROGRAM_AMOUNT个PCB的大小空间。
 bool PCB_SET_STATUS[MAX_PROGRAM_AMOUNT];     // PCB的分配状态，true表示已经分配，false表示未分配。
 
-ProgramManager::ProgramManager()
-{
-    initialize();
-}
+ProgramManager::ProgramManager() {}
 
-void ProgramManager::initialize()
+ProgramManager::~ProgramManager() {}
+
+void ProgramManager::initialize(SchedulerType _sType)
 {
     allPrograms.initialize();
-    readyPrograms.initialize();
     running = nullptr;
-
+    sType = _sType;
+    
     for (int i = 0; i < MAX_PROGRAM_AMOUNT; ++i)
     {
         PCB_SET_STATUS[i] = false;
+    }
+
+    switch (sType) {
+        case SchedulerType::RR:
+            rrScheduler.initialize(allPrograms);
+            break;
+        case SchedulerType::FIFS:
+            fifsScheduler.initialize(allPrograms);
+            break;
     }
 }
 
 int ProgramManager::executeThread(ThreadFunction function, void *parameter, const char *name, int priority)
 {
     // 关中断，防止创建线程的过程被打断
+    printf("call Execute Thread\n");
     bool status = interruptManager.getInterruptStatus();
     interruptManager.disableInterrupt();
 
@@ -65,46 +74,50 @@ int ProgramManager::executeThread(ThreadFunction function, void *parameter, cons
     thread->stack[6] = (int)parameter;
 
     allPrograms.push_back(&(thread->tagInAllList));
-    readyPrograms.push_back(&(thread->tagInGeneralList));
+    switch (sType) {
+        case SchedulerType::RR:
+            rrScheduler.enqueue(thread);
+            break;
+        case SchedulerType::FIFS:
+            fifsScheduler.enqueue(thread);
+            break;
+    }
+    
 
     // 恢复中断
     interruptManager.setInterruptStatus(status);
-
+    printf("end alloc\n");
     return thread->pid;
 }
 
 void ProgramManager::schedule()
 {
+    printf("Call Schedule\n");
     bool status = interruptManager.getInterruptStatus();
     interruptManager.disableInterrupt();
-
-    if (readyPrograms.size() == 0)
-    {
-        interruptManager.setInterruptStatus(status);
-        return;
-    } else {
-        //printf("amount of ready programs: %d\n", readyPrograms.size());
-    }
-
-    if (running->status == ProgramStatus::RUNNING)
-    {
-        running->status = ProgramStatus::READY;
-        running->ticks = running->priority * 10;
-        readyPrograms.push_back(&(running->tagInGeneralList));
-    }
-    else if (running->status == ProgramStatus::DEAD)
+    
+    if (running->status == ProgramStatus::DEAD)
     {
         releasePCB(running);
     }
 
-    ListItem *item = readyPrograms.front();
-    PCB *next = ListItem2PCB(item, tagInGeneralList);
-    PCB *cur = running;
-    next->status = ProgramStatus::RUNNING;
-    running = next;
-    readyPrograms.pop_front();
+    PCB* next;
+    switch (sType) {
+        case SchedulerType::RR:
+            next = rrScheduler.pickNext();
+            break;
+        case SchedulerType::FIFS:
+            next = fifsScheduler.pickNext();
+            break;
+    }
+    PCB* cur = running;
 
-    asm_switch_thread(cur, next);
+    if (next)
+    {
+        next->status = ProgramStatus::RUNNING;
+        running = next;
+        asm_switch_thread(cur, next);
+    }
 
     interruptManager.setInterruptStatus(status);
 }
@@ -116,12 +129,13 @@ void program_exit()
 
     if (thread->pid)
     {
+        printf("dead schedule\n");
         programManager.schedule();
     }
     else
     {
         interruptManager.disableInterrupt();
-        printf("halt\n");
+        printf("pid0 exit, halt\n");
         asm_halt();
     }
 }
@@ -146,8 +160,36 @@ void ProgramManager::releasePCB(PCB *program)
     PCB_SET_STATUS[index] = false;
 }
 
+void ProgramManager::switch_scheduler(SchedulerType _sType) 
+{
+    bool status = interruptManager.getInterruptStatus();
+    interruptManager.disableInterrupt();
+    if (_sType != sType) {
+        sType = _sType;
+        switch (sType)
+        {
+        case SchedulerType::RR:
+            rrScheduler.initialize(allPrograms);
+            break;
+        
+        case SchedulerType::FIFS:
+            fifsScheduler.initialize(allPrograms);
+            break;
+        }
+    }
+    interruptManager.setInterruptStatus(status);
+    return;
+}
+
 void ProgramManager::MESA_WakeUp(PCB *program) {
     program->status = ProgramStatus::READY;
     //printf("wake up program, pid: %d\n", program->pid);
-    readyPrograms.push_front(&(program->tagInGeneralList));
+    switch (sType) {
+        case SchedulerType::RR:
+            rrScheduler.MESA_Wakeup(program);
+            break;
+        case SchedulerType::FIFS:
+            fifsScheduler.MESA_Wakeup(program);
+            break;
+    }
 }

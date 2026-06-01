@@ -13,27 +13,29 @@ void handle_kernel_page_fault(const PageFaultInfo& info) {
             break;
         }
         case FaultType::DEMAND_ZERO: {
-            if (memoryManager.kernelVirtual.startAddress > info.addr) {
+            if (!memoryManager.kernelVirtual.isValidAddr(info.addr)) {
                 printf("Page Fault: DEMAND_ZERO but INVALID_ADDRESS, halt\n");
                 asm_halt();
             }
-            int paddr = memoryManager.kernelPhysical.allocate(1);
+            int paddr = memoryManager.allocatePhysicalPages(AddressPoolType::KERNEL, 1);
             
             if (paddr == -1) {
                 // TODO: Implement CLOCK
                 printf("Page Fault: DEMAND_ZERO but OUT_OF_MEMORY, halt\n");
                 asm_halt();                
             } 
-            *info.PTEptr = paddr | 0x7;
+            uint32 vaddr = info.addr & ~0xfff;
+            memoryManager.connectPhysicalVirtualPage(vaddr, paddr);
             if (memoryManager.pageinfos[PA2PGI(paddr)].hasFlag(PG_ZERO)) {
                 memoryManager.pageinfos[PA2PGI(paddr)].clearFlag(PG_ZERO);
             } else {
-                uint32 vaddr = info.addr & ~0xfff;
                 memset((void*)vaddr, 0, PAGE_SIZE);
             }
-            break;
+            return;
         }
     }
+    // TODO: flush TLB
+
 }
 
 bool handle_user_page_fault(const PageFaultInfo& info) {
