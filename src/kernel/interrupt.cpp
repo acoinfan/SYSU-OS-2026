@@ -24,6 +24,8 @@ extern "C" void c_page_fault_handler()
         UNKNOWN
     };
     FaultType faultType = FaultType::UNKNOWN;
+    int owner = programManager.running ? programManager.running->pid : 0;
+
     printf("faultType = %d\n", (int)faultType);
 
     // 获取地址

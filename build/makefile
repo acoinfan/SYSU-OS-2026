@@ -3,33 +3,25 @@ C_COMPLIER = gcc
 CXX_COMPLIER = g++
 CXX_COMPLIER_FLAGS = -g -Wall -march=i386 -std=c++11 -m32 -nostdlib -fno-builtin -ffreestanding -fno-pic
 LINKER = ld
-
 SRCDIR = ../src
 RUNDIR = ../run
 BUILDDIR = build
 INCLUDE_PATH = ../include
-
-
 KERNEL_SOURCE = $(wildcard $(SRCDIR)/kernel/*.cpp)
 CXX_SOURCE += $(KERNEL_SOURCE)
 CXX_OBJ += $(KERNEL_SOURCE:$(SRCDIR)/kernel/%.cpp=%.o)
-
 UTILS_SOURCE = $(wildcard $(SRCDIR)/utils/*.cpp)
 CXX_SOURCE += $(UTILS_SOURCE)
 CXX_OBJ += $(UTILS_SOURCE:$(SRCDIR)/utils/%.cpp=%.o)
-
 ASM_SOURCE += $(wildcard $(SRCDIR)/utils/*.asm)
 ASM_OBJ += $(ASM_SOURCE:$(SRCDIR)/utils/%.asm=%.o)
-
 OBJ += $(CXX_OBJ)
 OBJ += $(ASM_OBJ)
-
 build : mbr.bin bootloader.bin kernel.bin kernel.o
 	dd if=mbr.bin of=$(RUNDIR)/hd.img bs=512 count=1 seek=0 conv=notrunc
 	dd if=bootloader.bin of=$(RUNDIR)/hd.img bs=512 count=5 seek=1 conv=notrunc
 	dd if=kernel.bin of=$(RUNDIR)/hd.img bs=512 count=145 seek=6 conv=notrunc
 # nasm的include path有一个尾随/
-
 mbr.bin : $(SRCDIR)/boot/mbr.asm
 	$(ASM_COMPILER) -o mbr.bin -f bin -I$(INCLUDE_PATH)/ $(SRCDIR)/boot/mbr.asm
 	
@@ -55,10 +47,8 @@ clean:
 	
 run:
 	qemu-system-i386 -hda $(RUNDIR)/hd.img -display curses
-
 debug: 
 	qemu-system-i386 -S -s -hda $(RUNDIR)/hd.img 
-
 gdb:
 	gdb -x gdbinit
 test:

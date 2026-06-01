@@ -4,6 +4,7 @@
 #include "list.h"
 #include "thread.h"
 
+
 #define ListItem2PCB(ADDRESS, LIST_ITEM) ((PCB *)((int)(ADDRESS) - (int)&((PCB *)0)->LIST_ITEM))
 
 class ProgramManager
@@ -35,7 +36,8 @@ public:
     // 执行线程调度
     void schedule();
 
-    // zu se huan xing
+
+    //
     void MESA_WakeUp(PCB *program);
 };
 

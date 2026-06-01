@@ -1,4 +1,4 @@
-#include "program.h"
+#include "scheduler.h"
 #include "stdlib.h"
 #include "interrupt.h"
 #include "asm_utils.h"

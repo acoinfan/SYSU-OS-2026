@@ -43,6 +43,19 @@ ListItem *List::back()
     return temp;
 }
 
+const ListItem *const List::back() const {
+    ListItem *temp = head.next;
+    if (!temp)
+        return nullptr;
+
+    while (temp->next)
+    {
+        temp = temp->next;
+    }
+
+    return temp;
+}
+
 void List::push_back(ListItem *itemPtr)
 {
     ListItem *temp = back();
@@ -188,4 +201,19 @@ int List::find(ListItem *itemPtr)
     {
         return -1;
     }
+}
+
+void List::clear()
+{
+    ListItem* temp = head.next;
+    while (temp)
+    {
+        ListItem* next = temp->next;
+        temp->next = nullptr;
+        temp->previous = nullptr;
+        temp = next;
+    }
+
+    head.next = nullptr;
+    head.previous = nullptr;
 }

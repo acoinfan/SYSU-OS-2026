@@ -23,6 +23,7 @@ public:
     bool empty();
     // 返回指向List最后一个元素的指针
     // 若没有，则返回nullptr
+    const ListItem *const back() const;
     ListItem *back();
     // 将一个元素加入到List的结尾
     void push_back(ListItem *itemPtr);
@@ -44,6 +45,8 @@ public:
     ListItem *at(int pos);
     // 返回给定元素在List中的序号
     int find(ListItem *itemPtr);
+    // 清空List
+    void clear();
 };
 
 #endif
