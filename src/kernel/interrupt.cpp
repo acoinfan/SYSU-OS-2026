@@ -7,21 +7,33 @@
 #include "program.h"
 
 int times = 0;
-
-InterruptManager::InterruptManager()
-{
-    initialize();
-}
-
-// 中断处理函数
 extern "C" void c_page_fault_handler()
 {
+    enum struct FaultType : uint8 {
+        DEMAND_ZERO = 0,
+        STACK_GROWTH,
+        HEAP_GROWTH,
+        SWAP_IN,
+        COPY_ON_WRITE,
+        FILE_BACKED,
+        PERMISSION_VIOLATION,
+        KERNEL_RESERVED,
+        INVALID_ADDRESS,
+        OUT_OF_MEMORY,
+        PAGE_TABLE_BROKEN,
+        UNKNOWN
+    };
+    FaultType faultType = FaultType::UNKNOWN;
+    printf("faultType = %d\n", (int)faultType);
+
     // 获取地址
     uint32 addr = (uint32)asm_get_page_error_addr();
 
     // 查询对应列表项
+    uint32 PDE = *(uint32*)memoryManager.toPDE(addr);
     uint32 PTE = *(uint32*)memoryManager.toPTE(addr);
 
+    if (!(PDE & 1)) faultType = FaultType::PAGE_TABLE_BROKEN;
     // 查询对应权限项
     int present = (PTE & 1);
     int RW = (PTE & (1 << 1)) >> 1; 
@@ -54,6 +66,29 @@ extern "C" void c_page_fault_handler()
     printf("Page Fault Handler: Page Not Found at address 0x%x\n", addr);
     printf("PTE: %x\n", PTE);
     asm_halt();
+}
+
+
+// 中断处理函数 
+extern "C" void c_time_interrupt_handler()
+{
+    PCB *cur = programManager.running;
+
+    if (cur->ticks)
+    {
+        --cur->ticks;
+        ++cur->ticksPassedBy;
+    }
+    else
+    {
+        programManager.schedule();
+    }
+}
+
+
+InterruptManager::InterruptManager()
+{
+    initialize();
 }
 
 void InterruptManager::initialize()
@@ -127,22 +162,6 @@ void InterruptManager::disableTimeInterrupt()
 void InterruptManager::setTimeInterrupt(void *handler)
 {
     setInterruptDescriptor(IRQ0_8259A_MASTER, (uint32)handler, 0);
-}
-
-// 中断处理函数
-extern "C" void c_time_interrupt_handler()
-{
-    PCB *cur = programManager.running;
-
-    if (cur->ticks)
-    {
-        --cur->ticks;
-        ++cur->ticksPassedBy;
-    }
-    else
-    {
-        programManager.schedule();
-    }
 }
 
 void InterruptManager::enableInterrupt()

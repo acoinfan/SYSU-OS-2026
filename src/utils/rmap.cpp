@@ -26,6 +26,7 @@ int RMapManager::attach(PageInfo* pi, uint32 pte_addr, uint16 owner) {
         }
         RMapStart[cnt].next = idx;
     }
+    pi->incRef();
     return idx;
 }
 
@@ -50,6 +51,7 @@ void RMapManager::detach(PageInfo* pi, uint32 pte_addr, uint16 owner) {
         prev = idx;
         idx = RMapStart[idx].next;   
     }
+    pi->decRef();
     ASSERT(0);
     return;
 }

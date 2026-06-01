@@ -75,7 +75,35 @@ void MemoryManager::initialize()
     int RMapBitMapStart = usedMemory;
     usedMemory += RMapBitMapSize;
 
+    // Page Table Reserved
+    int kernelVirtualStartAddress = KERNEL_VIRTUAL_START;
+
+    int PTE_table_start = usedMemory;
+    int PTEcount = (PTE_table_start - RESERVED_MEMORY)/ PAGE_SIZE;
+    int PDEcount = ceil(PTEcount, (PAGE_SIZE / PTE_SIZE));       // 0-4MB已创建对应的PDE空间,故-1
+    usedMemory += (PDEcount * PAGE_SIZE);
+    
+
+    // initialize Page Table
+    for (int addr = RESERVED_MEMORY; addr < PTE_table_start; 
+            addr += PAGE_SIZE, kernelVirtualStartAddress += PAGE_SIZE) {
+        int* pde = (int*)toPDE(kernelVirtualStartAddress);
+        if(!(*pde & 0x00000001)) {
+            int PDEidx = (kernelVirtualStartAddress >> 22) & 0x3ff;
+            ASSERT(PDEidx >= 768 && PDEidx < 1024);
+            int PTE_table_PAddr = (PTE_table_start + PAGE_SIZE * (PDEidx - 768));
+            ASSERT(PTE_table_PAddr % PAGE_SIZE == 0);
+            *pde = PTE_table_PAddr | 0x7;
+            
+            // 清零PDE指向的页表
+            int *pte_clear = (int*)toPTE(kernelVirtualStartAddress);
+            memset((void*)((int)pte_clear & ~0xfff), 0, PAGE_SIZE);
+        }
+        int* pte = (int*)toPTE(kernelVirtualStartAddress);
+        *pte = addr | 0x7;
+    }
     ASSERT(!(usedMemory & 0xFFF));
+
     // 剩余的空闲的内存 
     int freeMemory = this->totalMemory - usedMemory;
 
@@ -85,10 +113,28 @@ void MemoryManager::initialize()
 
     int kernelPhysicalStartAddress = usedMemory;
     int userPhysicalStartAddress = usedMemory + kernelPages * PAGE_SIZE;
+    
+    #define PAStart2VAStart(PAStart) ((PAStart) - (RESERVED_MEMORY) + (KERNEL_VIRTUAL_START))
 
-    // int kernelPhysicalBitMapStart = BITMAP_START_ADDRESS;
-    // int userPhysicalBitMapStart = kernelPhysicalBitMapStart + ceil(kernelPages, 8);
-    // int kernelVirtualBitMapStart = userPhysicalBitMapStart + ceil(userPages, 8);;
+    // 更新起始点
+    // 坑: 不要修改PAStart
+    kernelPhysicalBitMapStart = PAStart2VAStart(kernelPhysicalBitMapStart);
+    kernelPAFreeNodeBitMapStart = PAStart2VAStart(kernelPAFreeNodeBitMapStart);
+    kernelPAFreeNodeListStart = PAStart2VAStart(kernelPAFreeNodeListStart);
+
+    userPhysicalBitMapStart = PAStart2VAStart(userPhysicalBitMapStart);
+    userPAFreeNodeBitMapStart = PAStart2VAStart(userPAFreeNodeBitMapStart);
+    userPAFreeNodeListStart = PAStart2VAStart(userPAFreeNodeListStart);
+
+    kernelVirtualStartAddress = PAStart2VAStart(kernelVirtualStartAddress);
+    kernelVirtualBitMapStart = PAStart2VAStart(kernelVirtualBitMapStart);
+
+    RMapNodeListStart = PAStart2VAStart(RMapNodeListStart);
+    RMapBitMapStart = PAStart2VAStart(RMapBitMapStart);
+
+    pageinfos = (PageInfo*)PAStart2VAStart((int)pageinfos);
+
+    int kernelVirtualPages = ceil(0xffffffff - kernelVirtualStartAddress, PAGE_SIZE);
 
     // clean Bitmap, FreeBitMap and FreeNodes
     // clean Bitmap
@@ -111,10 +157,6 @@ void MemoryManager::initialize()
     // clean RMap
     memset((void*)RMapNodeListStart, 0, RMapNodeListSize);
 
-    
-    
-    
-
     pageinfos[0].dump();
 
     // Set Kernel Pages
@@ -136,8 +178,8 @@ void MemoryManager::initialize()
     
     kernelVirtual.initialize(
         (char *)kernelVirtualBitMapStart,
-        kernelPages,
-        KERNEL_VIRTUAL_START);
+        kernelVirtualPages,
+        kernelVirtualStartAddress);
         
     rmapManager.initialize(RMapNodeCount, 
         (RMapEntry*)RMapNodeListStart, 
@@ -148,14 +190,12 @@ void MemoryManager::initialize()
     for (int i = 0; i < usedPages; i++) {
         // RESERVED, KERNEL, ref = 1
         pageinfos[i].setFlag(PG_RESERVED);
-        pageinfos[i].setFlag(PG_KERNEL);
-        pageinfos[i].incRef();
+        pageinfos[i].setFlag(PG_KERNEL);;
 
+        // 内核保留页不需要RMap
+        pageinfos[i].ref = 1;
         pageinfos[i].extra = RMAP_PTR_NULL;
     }
-        
-    // Set RMap
-
 
     printf("total memory: %d bytes ( %d MB )\n",
         this->totalMemory,
@@ -181,8 +221,8 @@ void MemoryManager::initialize()
            "    start address: 0x%x\n"
            "    total pages: %d  ( %d MB ) \n"
            "    bit map start address: 0x%x\n",
-           KERNEL_VIRTUAL_START,
-           userPages, kernelPages * PAGE_SIZE / 1024 / 1024,
+           kernelVirtualStartAddress,
+           userPages, kernelVirtualPages * PAGE_SIZE / 1024 / 1024,
            kernelVirtualBitMapStart);
     
     printf("Free Node List:\n"
@@ -196,6 +236,18 @@ void MemoryManager::initialize()
             "   user start address: 0x%x\n",
             kernelPAFreeNodeBitMapStart,
             userPAFreeNodeBitMapStart);            
+    
+    printf("RMap\n"
+            "   node list start address: 0x%x\n"
+            "   total nodes: %d\n"
+            "   bit map start address: 0x%x\n",
+            RMapNodeListStart,
+            RMapNodeListSize,
+            RMapBitMapStart);
+    
+    printf("PageInfo\n"
+            "   start address: 0x%x\n",
+            (int)pageinfos);
     // printf("0x%x\n", vaddr2paddr(0xC02C0000));
     // printf("0x100000 %x ;", *(int*) toPDE(0x100000));
     // // 获取0x100000对应的PTE信息,储存在0x101000 + 4 * 256
@@ -222,10 +274,11 @@ int MemoryManager::allocatePhysicalPages(enum AddressPoolType type, const int co
         start = userPhysical.allocate(count);
     }
 
-
+    // printf("start: %d\n", start);
     if (start == -1) return 0;
 
     int pgi = PA2PGI(start);
+    // printf("pgi: %d\n", pgi);
     for (int i = 0; i < count; i++) {
         pageinfos[pgi+i].clear();
         if (type == AddressPoolType::KERNEL)
@@ -300,14 +353,14 @@ void MemoryManager::openPageMechanism()
     // }
 
     // 将线性地址2~4MB恒等映射到物理地址2~4MB
-    address = 0x200000;
-    for (int i = 512; i < 1024; ++i)
-    {
-        // U/S = 1, R/W = 1, P = 1
-        low_page[i] = address | 0x7;
-        page[i] = address | 0x7;
-        address += PAGE_SIZE;
-    }
+    // address = 0x200000;
+    // for (int i = 512; i < 1024; ++i)
+    // {
+    //     // U/S = 1, R/W = 1, P = 1
+    //     low_page[i] = address | 0x7;
+    //     page[i] = address | 0x7;
+    //     address += PAGE_SIZE;
+    // }
     // 初始化页目录项
 
     printf("Building Initial Page Table. Please Wait...\n");
@@ -320,9 +373,9 @@ void MemoryManager::openPageMechanism()
 
     // 769~1022项
     for (int i = 1; i < 255; i++) {
-        int* pte = (int*)(PAGE_DIRECTORY + PAGE_SIZE + i * PAGE_SIZE);
-        directory[768 + i] = (int)pte | 0x7; 
-        memset(pte, 0, PAGE_SIZE);  
+        int* pde = (int*)(PAGE_DIRECTORY + PAGE_SIZE + i * PAGE_SIZE);
+        directory[768 + i] = (int)pde | 0x7; 
+        memset(pde, 0, PAGE_SIZE);  
     }
 
     // printf("0x100000 %x ;", *(int*)0x100000);
@@ -338,6 +391,7 @@ int MemoryManager::allocatePages(enum AddressPoolType type, const int count)
 {
     // 第一步：从虚拟地址池中分配若干虚拟页
     int virtualAddress = allocateVirtualPages(type, count);
+
     if (!virtualAddress)
     {
         return 0;
@@ -375,7 +429,6 @@ int MemoryManager::allocatePages(enum AddressPoolType type, const int count)
             return 0;
         }
     }
-
     return virtualAddress;
 }
 
@@ -428,7 +481,7 @@ bool MemoryManager::connectPhysicalVirtualPage(const int virtualAddress, const i
     //     printf("[MAP-AFTER ] v=0x%x pte old=0x%x new=0x%x\n", virtualAddress, old, *pte);
     // }
 
-    // 增加ref项
+    // 增加ref项, 这个应该交给
     pageinfos[PA2PGI(physicalPageAddress)].incRef();
     return true;
 }

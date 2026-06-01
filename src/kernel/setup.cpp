@@ -38,7 +38,6 @@ void first_thread(void *arg)
     p2 = (char *)memoryManager.allocatePages(AddressPoolType::KERNEL, 10);
     
     printf("%x\n", p2);
-
     printf("0x100000 %x ;", *(int*)0x100000);
     // 获取0x100000对应的PTE信息,储存在0x101000 + 4 * 256
     printf("0x101400 %x\n", *(int*)0x101400);

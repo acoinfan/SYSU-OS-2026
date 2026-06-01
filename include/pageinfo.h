@@ -4,7 +4,7 @@
 #include "os_type.h"
 
 #define PAGE_SHIFT 12
-#define PA2PGI(PA) ((PA)>> (PAGE_SHIFT))
+#define PA2PGI(PA) (((unsigned) (PA)) >> (PAGE_SHIFT))
 
 enum PageFlags {
     PG_RESERVED =1<<0,   // 系统保留
@@ -46,7 +46,9 @@ struct PageInfo {
     uint16 flags;
     uint32 extra;
 
+    // 只允许被rmap类调用,或者在新建/删除页表的时候调用
     uint16 incRef(void);
+    // 只允许被rmap类调用,或者在新建/删除页表的时候调用
     uint16 decRef(void);
     uint16 getRef(void) const;
     void setFlag(PageFlags flag);

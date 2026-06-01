@@ -11,9 +11,10 @@
 #define BITMAP_START_ADDRESS 0x10000
 
 // PTE
+#define KERNEL_HIGH_ADDRESS 0xc0000000
 #define PAGE_DIRECTORY 0x100000
 #define KERNEL_VIRTUAL_START 0xc0100000
-
+#define PTE_SIZE 0x4
 
 // Buddy Macro
 // description in README
