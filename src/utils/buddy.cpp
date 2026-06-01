@@ -156,7 +156,7 @@ void Buddy::release(const int index, const int count) {
 }
 
 int Buddy::find_avail_freeNode(){
-    int boundary = min(MAX_TOTAL_NODES, totalPages);
+    int boundary = totalPages;
     for (int i = 0; i < boundary; i++) {
         if (!GET_MAP(freeBitmap, i)) {
             return i;

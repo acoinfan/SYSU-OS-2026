@@ -25,13 +25,19 @@
 ===== 0x200000 =====
 
 0x200000 - 0x2C0000 FreeNodeList for Kernel PhysicalPool (大小为768KB)
-最大可管理物理池大小: 768KB / sizeof(Node) * 4KB = 32K Nodes * 4 KB = 128MB
-                             ↑ 24B
-0x2C0000 - 0x2D0000 Kernel PhysicalPool Bitmap
-最大可管理物理内存: 64KB / 1bit * 4KB = 2GB
+最大可管理物理池大小: 768KB / sizeof(Node) * 4KB = 48K Nodes * 4 KB = 192MB
+                             ↑ 16B
+0x2C0000 - 0x2C8000 Kernel PhysicalPool Bitmap
+最大可管理物理内存: 32KB / 1bit * 4KB = 1GB
 
-0x2D0000 - 0x2E0000 Kernel PhysicalPool Free Bitmap
-最大可管理节点总数: 64KB / 1bit = 512K Nodes > 32K
+0x2C8000 - 0x2CA000 Kernel PhysicalPool Free Bitmap
+最大可管理节点总数: 8KB / 1bit = 64K Nodes > 48K
+
+0x2CA000 - 0x2CC000 User PhysicalPool Free Bitmap
+最大可管理节点总数: 8KB / 1bit = 64K Nodes > 48K
+
+0x2D0000 - 0x2D8000 User PhysicalPool Bitmap
+最大可管理物理内存: 32KB / 1bit * 4KB = 1GB        (256K Pages)
 
 0x2E0000 - 0x300000 Kernel VirtualPool Bitmap
 最大可管理虚拟内存: 128KB / 1bit * 4KB = 4GB
@@ -39,13 +45,11 @@
 ===== 0x300000 =====
 
 0x300000 - 0x3C0000 FreeNodeList for User PhysicalPool (大小为768KB)
-最大可管理物理池大小: 768KB / sizeof(Node) * 4KB = 32K Nodes * 4 KB = 128MB                            
+最大可管理物理池大小: 768KB / sizeof(Node) * 4KB = 48K Nodes * 4 KB = 192MB                            
 
-0x3C0000 - 0x3D0000 User PhysicalPool Bitmap
-最大可管理物理内存: 64KB / 1bit * 4KB = 2GB
-
-0x3D0000 - 0x3E0000 User PhysicalPoo Free Bitmap
-最大可管理节点总数: 64KB / 1bit = 512K Nodes > 32K 
+0x3C0000 - 0x400000 Page Info (256KB)
+最大可管理总页面: 256KB / sizeof(PageInfo) = 512K Pages?
+                            ↑ 4B
 
 MAX_TOTAL_NODES 32768     ; buddy.h
 

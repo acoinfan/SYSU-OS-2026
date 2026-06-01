@@ -5,6 +5,7 @@
 #include "stdio.h"
 #include "program.h"
 #include "os_modules.h"
+#include "assert.h"
 
 MemoryManager::MemoryManager()
 {
@@ -26,7 +27,56 @@ void MemoryManager::initialize()
         printf("memory is too small, halt.\n");
         asm_halt();
     }
-    // 剩余的空闲的内存
+    
+    // Parameters
+    int maxPages = ALIGN(PAGE_SIZE, (this->totalMemory) / 2) / PAGE_SIZE;
+
+    // PA Para
+    int PAfreeNodeListSize = ALIGN(PAGE_SIZE, maxPages * sizeof(FreeNode));
+    int PAfreeNodeBitMapSize = ALIGN(PAGE_SIZE, (maxPages+7)/8);
+    int PABitMapSize = ALIGN(PAGE_SIZE, (maxPages+7)/8);
+    // VA Para
+    int VABitMapSize = KERNEL_VA_BITMAP_SIZE;
+    // PageInfo Para
+    int PageInfoSize = ALIGN(PAGE_SIZE, maxPages * sizeof(PageInfo));
+    // RMapManager Para
+    int RMapNodeCount = 1.5 * maxPages;
+    int RMapNodeListSize = ALIGN(PAGE_SIZE, RMapNodeCount * sizeof(RMapEntry));
+    int RMapBitMapSize = ALIGN(PAGE_SIZE, (RMapNodeCount+7)/8);
+
+
+    // KernelPA Pool
+    int kernelPAFreeNodeListStart = usedMemory;
+    usedMemory += PAfreeNodeListSize;
+    int kernelPAFreeNodeBitMapStart = usedMemory;
+    usedMemory += PAfreeNodeBitMapSize;
+    int kernelPhysicalBitMapStart = usedMemory;
+    usedMemory += PABitMapSize;
+
+    // UserPA Pool
+    int userPAFreeNodeListStart = usedMemory;
+    usedMemory += PAfreeNodeListSize;
+    int userPAFreeNodeBitMapStart = usedMemory;
+    usedMemory += PAfreeNodeBitMapSize;
+    int userPhysicalBitMapStart = usedMemory;
+    usedMemory += PABitMapSize;
+
+    // KernelVA Pool
+    int kernelVirtualBitMapStart = usedMemory;
+    usedMemory += VABitMapSize;
+
+    // PageInfo
+    pageinfos = (PageInfo*)usedMemory;
+    usedMemory += PageInfoSize;
+
+    // RMapManager
+    int RMapNodeListStart = usedMemory;
+    usedMemory += RMapNodeListSize;
+    int RMapBitMapStart = usedMemory;
+    usedMemory += RMapBitMapSize;
+
+    ASSERT(!(usedMemory & 0xFFF));
+    // 剩余的空闲的内存 
     int freeMemory = this->totalMemory - usedMemory;
 
     int freePages = freeMemory / PAGE_SIZE;
@@ -38,54 +88,78 @@ void MemoryManager::initialize()
 
     // int kernelPhysicalBitMapStart = BITMAP_START_ADDRESS;
     // int userPhysicalBitMapStart = kernelPhysicalBitMapStart + ceil(kernelPages, 8);
-    // int kernelVirtualBitMapStart = userPhysicalBitMapStart + ceil(userPages, 8);
-
-    int kernelPhysicalBitMapStart = KERNEL_PA_POOL_BITMAP;
-    int userPhysicalBitMapStart = USER_PA_POOL_BITMAP;
-    int kernelVirtualBitMapStart = USER_VA_POOL_BITMAP;
+    // int kernelVirtualBitMapStart = userPhysicalBitMapStart + ceil(userPages, 8);;
 
     // clean Bitmap, FreeBitMap and FreeNodes
     // clean Bitmap
-    memset((void*)KERNEL_PA_POOL_BITMAP, 0, PA_BITMAP_SIZE);
-    memset((void*)USER_PA_POOL_BITMAP, 0, PA_BITMAP_SIZE);
+    memset((void*)kernelPhysicalBitMapStart, 0, PABitMapSize);
+    memset((void*)userPhysicalBitMapStart, 0, PABitMapSize);
 
-    memset((void*)USER_VA_POOL_BITMAP, 0, VA_BITMAP_SIZE);
+    memset((void*)kernelVirtualBitMapStart, 0, VABitMapSize);
 
     // clean FreeBitMap
-    memset((void*)KERNEL_PA_POOL_FREE_BITMAP, 0, FREE_BITMAP_SIZE);
-    memset((void*)USER_PA_POOL_FREE_BITMAP, 0, FREE_BITMAP_SIZE);
+    memset((void*)kernelPAFreeNodeBitMapStart, 0, PAfreeNodeBitMapSize);
+    memset((void*)userPAFreeNodeBitMapStart, 0, PAfreeNodeBitMapSize);
 
-    // clean FreeNodes
-    memset((void*)KERNEL_PA_POOL_FREENODES, 0, FREENODES_SIZE);
-    memset((void*)USER_PA_POOL_FREENODES, 0, FREENODES_SIZE);
+    // clean FreeNodeList
+    memset((void*)kernelPAFreeNodeListStart, 0, PAfreeNodeListSize);
+    memset((void*)userPAFreeNodeListStart, 0, PAfreeNodeListSize);
 
-    // also can be replace by:
-    // memset((void*)0x200000, 0, 0x200000);
+    // clean PageInfo
+    memset((void*)pageinfos, 0, PageInfoSize);
 
+    // clean RMap
+    memset((void*)RMapNodeListStart, 0, RMapNodeListSize);
+
+    
+    
+    
+
+    pageinfos[0].dump();
+
+    // Set Kernel Pages
     kernelPhysical.initialize(
         (char *)kernelPhysicalBitMapStart,
         kernelPages,
         kernelPhysicalStartAddress,
-        (char *)KERNEL_PA_POOL_FREE_BITMAP,
-        (FreeNode*)KERNEL_PA_POOL_FREENODES
-        );
+        (char *)kernelPAFreeNodeBitMapStart,
+        (FreeNode*)kernelPAFreeNodeListStart
+    );
 
     userPhysical.initialize(
         (char *)userPhysicalBitMapStart,
         userPages,
         userPhysicalStartAddress,
-        (char *)USER_PA_POOL_FREE_BITMAP,
-        (FreeNode *)USER_PA_POOL_FREENODES
+        (char *)userPAFreeNodeBitMapStart,
+        (FreeNode *)userPAFreeNodeListStart
     );
-
+    
     kernelVirtual.initialize(
         (char *)kernelVirtualBitMapStart,
         kernelPages,
         KERNEL_VIRTUAL_START);
+        
+    rmapManager.initialize(RMapNodeCount, 
+        (RMapEntry*)RMapNodeListStart, 
+        (char*)RMapBitMapStart);
+            
+    // Set PageInfo
+    int usedPages = usedMemory / PAGE_SIZE;
+    for (int i = 0; i < usedPages; i++) {
+        // RESERVED, KERNEL, ref = 1
+        pageinfos[i].setFlag(PG_RESERVED);
+        pageinfos[i].setFlag(PG_KERNEL);
+        pageinfos[i].incRef();
+
+        pageinfos[i].extra = RMAP_PTR_NULL;
+    }
+        
+    // Set RMap
+
 
     printf("total memory: %d bytes ( %d MB )\n",
-           this->totalMemory,
-           this->totalMemory / 1024 / 1024);
+        this->totalMemory,
+    this->totalMemory / 1024 / 1024);
 
     printf("kernel pool\n"
            "    start address: 0x%x\n"
@@ -111,6 +185,17 @@ void MemoryManager::initialize()
            userPages, kernelPages * PAGE_SIZE / 1024 / 1024,
            kernelVirtualBitMapStart);
     
+    printf("Free Node List:\n"
+            "   kernel start address: 0x%x\n"
+            "   user start address: 0x%x\n",
+            kernelPAFreeNodeListStart,
+            userPAFreeNodeListStart);
+
+    printf("Free Node Bit Map:\n"
+            "   kernel start address: 0x%x\n"
+            "   user start address: 0x%x\n",
+            kernelPAFreeNodeBitMapStart,
+            userPAFreeNodeBitMapStart);            
     // printf("0x%x\n", vaddr2paddr(0xC02C0000));
     // printf("0x100000 %x ;", *(int*) toPDE(0x100000));
     // // 获取0x100000对应的PTE信息,储存在0x101000 + 4 * 256
@@ -130,13 +215,23 @@ int MemoryManager::allocatePhysicalPages(enum AddressPoolType type, const int co
     if (type == AddressPoolType::KERNEL)
     {
         start = kernelPhysical.allocate(count);
+
     }
     else if (type == AddressPoolType::USER)
     {
         start = userPhysical.allocate(count);
     }
 
-    return (start == -1) ? 0 : start;
+
+    if (start == -1) return 0;
+
+    int pgi = PA2PGI(start);
+    for (int i = 0; i < count; i++) {
+        pageinfos[pgi+i].clear();
+        if (type == AddressPoolType::KERNEL)
+            pageinfos[pgi+i].setFlag(PG_KERNEL); 
+    }
+    return start;
 }
 
 void MemoryManager::releasePhysicalPages(enum AddressPoolType type, const int paddr, const int count)
@@ -314,7 +409,10 @@ bool MemoryManager::connectPhysicalVirtualPage(const int virtualAddress, const i
         int page = allocatePhysicalPages(AddressPoolType::KERNEL, 1);
         if (!page)
             return false;
-
+        else {
+            pageinfos[PA2PGI(page)].incRef();
+            pageinfos[PA2PGI(page)].setFlag(PG_KERNEL);
+        }
         // 使页目录项指向页表
         *pde = page | 0x7;
         // 初始化页表
@@ -329,6 +427,9 @@ bool MemoryManager::connectPhysicalVirtualPage(const int virtualAddress, const i
     // if (virtualAddress >= 0x100000 && virtualAddress < 0x200000) {
     //     printf("[MAP-AFTER ] v=0x%x pte old=0x%x new=0x%x\n", virtualAddress, old, *pte);
     // }
+
+    // 增加ref项
+    pageinfos[PA2PGI(physicalPageAddress)].incRef();
     return true;
 }
 
@@ -351,11 +452,17 @@ void MemoryManager::releasePages(enum AddressPoolType type, const int virtualAdd
     for (int i = 0; i < count; ++i, vaddr += PAGE_SIZE)
     {
         // 第一步，对每一个虚拟页，释放为其分配的物理页
-        releasePhysicalPages(type, vaddr2paddr(vaddr), 1);
+        int paddr = vaddr2paddr(vaddr);
+        if (pageinfos[PA2PGI(paddr)].decRef() == 0) {
+            pageinfos[PA2PGI(paddr)].setFlag(PG_FREE);
+            releasePhysicalPages(type, paddr, 1);
+        }
 
         // 设置页表项为不存在，防止释放后被再次使用
         pte = (int *)toPTE(vaddr);
         *pte = 0;
+
+        // TODO: 分析页表是否可以被释放, 如果释放记得减小ref
     }
 
     // 第二步，释放虚拟页

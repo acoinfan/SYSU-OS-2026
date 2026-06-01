@@ -16,9 +16,43 @@ InterruptManager::InterruptManager()
 // 中断处理函数
 extern "C" void c_page_fault_handler()
 {
-
+    // 获取地址
     uint32 addr = (uint32)asm_get_page_error_addr();
+
+    // 查询对应列表项
+    uint32 PTE = *(uint32*)memoryManager.toPTE(addr);
+
+    // 查询对应权限项
+    int present = (PTE & 1);
+    int RW = (PTE & (1 << 1)) >> 1; 
+    int US = (PTE & (1 << 2)) >> 2;
+    int access = (PTE & (1 << 5)) >> 5;
+
+    // present = 1, RW = 0: COW
+    if (present && !RW) {
+        printf("COW\n");
+        ;
+    }
+    // present = 0, Page Fault
+    else if (!present) {
+        printf("Load Page\n");
+        // src
+            // in Swap
+
+            // on Disk
+
+            // Not Found
+
+        // dst
+            // get PA
+
+            // evict
+            
+
+    }
+
     printf("Page Fault Handler: Page Not Found at address 0x%x\n", addr);
+    printf("PTE: %x\n", PTE);
     asm_halt();
 }
 

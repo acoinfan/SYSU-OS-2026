@@ -2,6 +2,10 @@
 #define MEMORY_H
 
 #include "address_pool.h"
+#include "pageinfo.h"
+#include "rmap.h"
+// align只能为2的幂
+#define ALIGN(align, n) (((n) + ((align) - 1)) & ~((align) - 1))
 
 enum AddressPoolType
 {
@@ -20,7 +24,8 @@ public:
     AddressPool<PA> userPhysical;
     // 内核虚拟地址池
     AddressPool<VA> kernelVirtual;
-
+    PageInfo* pageinfos;
+    RMapManager rmapManager;
 public:
     MemoryManager();
 
