@@ -164,6 +164,8 @@ void MemoryManager::initialize()
     memset((void*)RMapNodeListStart, 0, RMapNodeListSize);
 
     // Set Kernel Pages
+    // DEBUG:
+    kernelPages = 1;
     kernelPhysical.initialize(
         (char *)kernelPhysicalBitMapStart,
         kernelPages,
@@ -622,4 +624,20 @@ int MemoryManager::allocatePagesLazy(enum AddressPoolType type, const VPageFlags
     }    
     *pte = PTE_LAZY | PTE_WRITABLE;
     return vaddr;
+}
+
+VictimInfo MemoryManager::findVictim(enum AddressPoolType type) {
+    VictimInfo victimInfo;
+    if (type == AddressPoolType::KERNEL)
+    {
+        // 搜索全长度,3轮
+        victimInfo = memoryManager.kernelPhysical.findVictim(0, 3);
+    } else if (type == AddressPoolType::USER) {
+        // 搜索一定页数,2轮
+        victimInfo = memoryManager.kernelPhysical.findVictim(1000, 2);
+    } else {
+        victimInfo.paddr = 0;
+        victimInfo.PTEptr = 0;
+    }
+    return victimInfo;
 }

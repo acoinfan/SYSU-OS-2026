@@ -27,5 +27,6 @@ struct PageFaultInfo {
 
 void handle_kernel_page_fault(const PageFaultInfo& info);
 bool handle_user_page_fault(const PageFaultInfo& info);
+int out_of_memory(enum AddressPoolType type, const int count);
 
 #endif

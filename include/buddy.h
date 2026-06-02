@@ -60,6 +60,7 @@ public:
     // -1 for fail
     int insert_freeNode(int startIndex, int order);
     void remove_freeNode(FreeNode* node);
+    bool isAlloc(uint32 idx);
 };
 
 // for debug

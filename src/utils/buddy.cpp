@@ -224,6 +224,10 @@ void Buddy::releaseBlock(int startIndex, int order) {
     insert_freeNode(startIndex, min(order, MAX_ORDER));
 }
 
+bool Buddy::isAlloc(uint32 idx) {
+    return (bitmap[idx >> 3] & (1 << (idx & 0x7))) & 1U;
+}
+
 
 // for debug
 void print_bitmap(char *bitmap, int count)

@@ -71,6 +71,9 @@ public:
 
     // 释放虚拟页
     void releaseVirtualPages(enum AddressPoolType type, const int vaddr, const int count);
+
+    // CLOCK (0,0) is Invalid
+    VictimInfo findVictim(enum AddressPoolType type);
 };
 
 #endif

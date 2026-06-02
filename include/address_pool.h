@@ -7,6 +7,7 @@
 #include "os_constant.h"
 #include "pageinfo.h"
 #include "assert.h"
+#include "rmap.h"
 
 struct PA {};
 struct VA {};
@@ -17,6 +18,11 @@ enum VPageFlags : uint8 {
     VP_COW   = 1 << 2,
     VP_FILE  = 1 << 3,
     VP_SWAP  = 1 << 4,
+};
+
+struct VictimInfo {
+    uint32 PTEptr;
+    uint32 paddr;
 };
 
 inline PTEFlags vPageFlags2PTE(VPageFlags flags)
@@ -105,8 +111,8 @@ class AddressPool<PA>
 {
 public:
     Buddy resources;
-    uint32 startAddress;
-
+    uint32 startAddress, endAddress;   // 左闭右开
+    uint32 victim_idx, length;  // [0,length)
 public:
     AddressPool() {}
 
@@ -115,6 +121,8 @@ public:
     {
         resources.initialize(bitmap, length, freeBitMap, freeNodes);
         this->startAddress = startAddress;
+        this->length = length;
+        this->victim_idx = 0;
     }
 
     // 从地址池中分配count个连续页，成功则返回第一个页的地址，失败则返回-1
@@ -130,9 +138,52 @@ public:
         resources.release((address - startAddress) / PAGE_SIZE, amount);
     }
 
-    int findVictim()
+    VictimInfo findVictim(uint32 search_length=0, uint32 round=2)
     {
-        
+        uint32 victim_pgi_base = PA2PGI(startAddress); 
+        uint32 saved_victim_idx = this->victim_idx;
+        // Access,Dirty IDX 00
+        VictimInfo victims[4] = {{0,0}, {0,0}, {0,0}, {0,0}}; // 这里用0初始化，因为pageinfos[0]必然不受管理
+        if (search_length == 0 || search_length > this->length) search_length = this->length;
+
+        for (int r = 0; r < round; r++) {
+            this->victim_idx = saved_victim_idx;
+            for (int i = 0; i < search_length; i++,
+                this->victim_idx = (this->victim_idx + 1) % this->length) {
+    
+                // 所有的页都已被分配才调用
+                ASSERT(resources.isAlloc(this->victim_idx));
+                uint32 victim_pgi = victim_pgi_base + this->victim_idx;
+                if (memoryManager.pageinfos[victim_pgi].hasFlag(PG_SINGLE) 
+                    && memoryManager.pageinfos[victim_pgi].getRef() == 1) {
+                    uint32 rmapIdx = memoryManager.pageinfos[victim_pgi].extra;
+                    RMapEntry rmapEntry = memoryManager.rmapManager.RMapStart[rmapIdx];
+                    uint32* PTEptr = (uint32*)rmapEntry.pte_addr;
+                    int access = (!!((*PTEptr) & PTE_ACCESSED)) << 1U;
+                    int dirty = (!!((*PTEptr) & PTE_DIRTY));
+    
+                    // 清除 PTE Access, 并且不属于最后一轮时跳过
+                    if (r < round - 1 && access) {
+                        (*PTEptr) = (*PTEptr) & (~PTE_ACCESSED);
+                        continue;
+                    }
+
+                    int priority = access | dirty;
+                    if (victims[priority].paddr == 0) {
+                        victims[priority].paddr = startAddress + this->victim_idx * PAGE_SIZE;
+                        victims[priority].PTEptr = (uint32)PTEptr;
+                        if (priority == 0) return victims[0];    // 0,0 shortCut
+                    }
+                }
+            }
+        }
+        for (int i = 1; i < 4; i++) {
+            if (victims[i].paddr != 0 && victims[i].PTEptr != 0) {
+                return victims[i];
+            }
+        }
+        // 无效的返回值, 用于判断
+        return {0,0};
     }
 };
 

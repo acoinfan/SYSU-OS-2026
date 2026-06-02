@@ -21,8 +21,8 @@ void handle_kernel_page_fault(const PageFaultInfo& info) {
             }
             int paddr = memoryManager.allocatePhysicalPages(AddressPoolType::KERNEL, 1);
             
-            if (paddr == -1) {
-                // TODO: Implement CLOCK
+            // Try Clock
+            if (paddr == -1 && (paddr = out_of_memory(AddressPoolType::KERNEL, 1)) == -1) {
                 printf("Page Fault: DEMAND_ZERO but OUT_OF_MEMORY, halt\n");
                 asm_halt();                
             } 
@@ -47,4 +47,38 @@ void handle_kernel_page_fault(const PageFaultInfo& info) {
 bool handle_user_page_fault(const PageFaultInfo& info) {
     asm_halt();
     return false;
+}
+
+// 清除Victim块的信息，同时返回给Handler
+int out_of_memory(enum AddressPoolType type, const int count) {
+    // 拒绝大小不等于1的分配
+    if (count != 1) return -1;
+
+    VictimInfo victimInfo = memoryManager.findVictim(type);
+    if (victimInfo.paddr == 0 && victimInfo.PTEptr == 0) return -1;
+
+    // TODO: 清除原对应PTE信息, 这里暂时直接把原PTE清空
+    *(uint32*)victimInfo.PTEptr = 0;
+    uint32 PTE = *(uint32*)victimInfo.PTEptr;
+
+    // TODO: 脏则写回
+    if (PTE & PTE_DIRTY) {
+        // TODO: 写入SWAP
+        if (1) {
+            ;
+        // TODO: 写回DISK
+        } else if (0){
+            ;
+        }
+    }
+    
+    // 设置合适的PageInfo
+    uint32 pgi = PA2PGI(victimInfo.paddr);
+    memoryManager.pageinfos[pgi].clear();
+
+    if (type == AddressPoolType::KERNEL) {
+        memoryManager.pageinfos[pgi].setFlag(PG_KERNEL); 
+    }
+    memoryManager.pageinfos[pgi].setFlag(PG_SINGLE);
+    return victimInfo.paddr;
 }
