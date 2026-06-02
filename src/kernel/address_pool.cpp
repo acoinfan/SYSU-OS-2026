@@ -2,7 +2,7 @@
 #include "os_modules.h"
 
 // 初始化地址池
-void AddressPool<VA>::initialize(char *bitmap, const int length, const uint32 startAddress,
+void VAddressPool::initialize(char *bitmap, const int length, const uint32 startAddress,
                                  const uint32 endAddress, const uint32 privileges)
 {
     resources.initialize(bitmap, length);
@@ -12,7 +12,7 @@ void AddressPool<VA>::initialize(char *bitmap, const int length, const uint32 st
 }
 
 // 从地址池中分配count个连续页，成功则返回第一个页的地址，失败则返回-1
-int AddressPool<VA>::allocate(const int count, VPageFlags privilege)
+int VAddressPool::allocate(const int count, VPageFlags privilege)
 {
     int start = resources.allocate(count);
     if (start != -1)
@@ -27,12 +27,12 @@ int AddressPool<VA>::allocate(const int count, VPageFlags privilege)
 }
 
 // 释放若干页的空间
-void AddressPool<VA>::release(const uint32 address, const int amount)
+void VAddressPool::release(const uint32 address, const int amount)
 {
     resources.release((address - startAddress) / PAGE_SIZE, amount);
 }
 
-VPageFlags AddressPool<VA>::getVPageFlag(const uint32 vaddr)
+VPageFlags VAddressPool::getVPageFlag(const uint32 vaddr)
 {
     ASSERT(isValidAddr(vaddr));
     uint32 idx = ((vaddr & ~0xfff) - startAddress) / PAGE_SIZE;
@@ -40,13 +40,8 @@ VPageFlags AddressPool<VA>::getVPageFlag(const uint32 vaddr)
     return privileges[idx];
 }
 
-inline bool AddressPool<VA>::isValidAddr(const uint32 vaddr)
-{
-    return vaddr >= startAddress && vaddr <= endAddress;
-}
-
 // 初始化地址池
-void AddressPool<PA>::initialize(char *bitmap, const int length, const uint32 startAddress, char *freeBitMap, FreeNode *freeNodes)
+void PAddressPool::initialize(char *bitmap, const int length, const uint32 startAddress, char *freeBitMap, FreeNode *freeNodes)
 {
     resources.initialize(bitmap, length, freeBitMap, freeNodes);
     this->startAddress = startAddress;
@@ -55,19 +50,19 @@ void AddressPool<PA>::initialize(char *bitmap, const int length, const uint32 st
 }
 
 // 从地址池中分配count个连续页，成功则返回第一个页的地址，失败则返回-1
-int AddressPool<PA>::allocate(const int count)
+int PAddressPool::allocate(const int count)
 {
     int start = resources.allocate(count);
     return (start == -1) ? -1 : (start * PAGE_SIZE + startAddress);
 }
 
 // 释放若干页的空间
-void AddressPool<PA>::release(const uint32 address, const int amount)
+void PAddressPool::release(const uint32 address, const int amount)
 {
     resources.release((address - startAddress) / PAGE_SIZE, amount);
 }
 
-VictimInfo AddressPool<PA>::findVictim(uint32 search_length = 0, uint32 round = 2)
+VictimInfo PAddressPool::findVictim(uint32 search_length, uint32 round)
 {
     uint32 victim_pgi_base = PA2PGI(startAddress);
     uint32 saved_victim_idx = this->victim_idx;
@@ -122,4 +117,5 @@ VictimInfo AddressPool<PA>::findVictim(uint32 search_length = 0, uint32 round = 
     // 无效的返回值, 用于判断
     return {0, 0};
 }
+
 #include "os_modules.h"

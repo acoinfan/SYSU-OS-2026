@@ -289,7 +289,7 @@ int MemoryManager::allocatePhysicalPages(enum AddressPoolType type, const int co
     }
 
     // printf("start: %d\n", start);
-    if (start == -1) return 0;
+    if (start == -1) return -1;
 
     int pgi = PA2PGI(start);
     // printf("pgi: %d\n", pgi);

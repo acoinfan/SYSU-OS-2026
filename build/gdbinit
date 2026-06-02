@@ -5,49 +5,9 @@ set pagination off
 
 # 停在内核入口后再开监控更稳妥
 break setup_kernel
-commands
-  silent
-  printf "== at setup_kernel ==\n"
-
-  # PTE[257] aliases for VA 0x101000:
-  #   0x101404   : direct/identity alias while present
-  #   0xffc00404 : recursive alias through PDE[0]
-  #   0xfff00404 : recursive alias through PDE[768]
-  watch *(unsigned int*)0x101404
-  commands
-    silent
-    printf "\n[WP direct PTE257] eip=0x%x cr0=0x%x cr3=0x%x\n", $eip, $cr0, $cr3
-    printf "direct=0x%x low-rec=0x%x high-rec=0x%x\n", *(unsigned int*)0x101404, *(unsigned int*)0xffc00404, *(unsigned int*)0xfff00404
-    bt
-    c
-  end
-
-  watch *(unsigned int*)0xffc00404
-  commands
-    silent
-    printf "\n[WP low-rec PTE257] eip=0x%x cr0=0x%x cr3=0x%x\n", $eip, $cr0, $cr3
-    printf "direct=0x%x low-rec=0x%x high-rec=0x%x\n", *(unsigned int*)0x101404, *(unsigned int*)0xffc00404, *(unsigned int*)0xfff00404
-    bt
-    c
-  end
-
-  watch *(unsigned int*)0xfff00404
-  commands
-    silent
-    printf "\n[WP high-rec PTE257] eip=0x%x cr0=0x%x cr3=0x%x\n", $eip, $cr0, $cr3
-    printf "direct=0x%x low-rec=0x%x high-rec=0x%x\n", *(unsigned int*)0x101404, *(unsigned int*)0xffc00404, *(unsigned int*)0xfff00404
-    bt
-    c
-  end
-
-  watch *(unsigned int*)0xfff00400
-  commands
-    silent
-    printf "\n[WP high-rec PTE256] eip=0x%x cr0=0x%x cr3=0x%x value=0x%x\n", $eip, $cr0, $cr3, *(unsigned int*)0xfff00400
-    bt
-    c
-  end
-
-  c
-
-end
+# b out_of_memory
+# b c_page_fault_handler
+# b first_thread
+# b releasePages
+# layout src
+b setup.cpp:33

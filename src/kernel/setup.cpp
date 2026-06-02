@@ -28,7 +28,12 @@ void first_thread(void *arg)
     interruptManager.disableTimeInterrupt();
     char* p0 = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, VP_RW);
     *p0 = 0;
+    char* testp = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, VP_RW);
+    *testp = 0;
     memoryManager.releasePages(AddressPoolType::KERNEL, (int)p0, 1);
+    memoryManager.releasePages(AddressPoolType::KERNEL, (int)testp, 1);
+    asm_halt();
+    
     char *p1 = (char *)memoryManager.allocatePages(AddressPoolType::KERNEL, 100, VP_RW);
     char *p2 = (char *)memoryManager.allocatePages(AddressPoolType::KERNEL, 10, VP_RW);
     char *p3 = (char *)memoryManager.allocatePages(AddressPoolType::KERNEL, 100, VP_RW);

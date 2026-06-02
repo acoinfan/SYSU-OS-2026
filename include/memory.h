@@ -14,11 +14,11 @@ public:
     // 可管理的内存容量
     int totalMemory;
     // 内核物理地址池
-    AddressPool<PA> kernelPhysical;
+    PAddressPool kernelPhysical;
     // 用户物理地址池
-    AddressPool<PA> userPhysical;
+    PAddressPool userPhysical;
     // 内核虚拟地址池
-    AddressPool<VA> kernelVirtual;
+    VAddressPool kernelVirtual;
     PageInfo* pageinfos;
     RMapManager rmapManager;
 public:
