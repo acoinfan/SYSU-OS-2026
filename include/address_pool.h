@@ -8,17 +8,10 @@
 #include "pageinfo.h"
 #include "assert.h"
 #include "rmap.h"
+#include "enum.h"
 
 struct PA {};
 struct VA {};
-
-enum VPageFlags : uint8 {
-    VP_RW    = 1 << 0,
-    VP_USER  = 1 << 1,
-    VP_COW   = 1 << 2,
-    VP_FILE  = 1 << 3,
-    VP_SWAP  = 1 << 4,
-};
 
 struct VictimInfo {
     uint32 PTEptr;

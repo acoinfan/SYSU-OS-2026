@@ -2,21 +2,7 @@
 #define HANDLER_H
 
 #include "os_type.h"
-
-enum struct FaultType : uint8 {
-    DEMAND_ZERO = 0,
-    STACK_GROWTH,
-    HEAP_GROWTH,
-    SWAP_IN,
-    COPY_ON_WRITE,
-    FILE_BACKED,
-    PERMISSION_VIOLATION,
-    KERNEL_RESERVED,
-    INVALID_ADDRESS,
-    OUT_OF_MEMORY,
-    PAGE_TABLE_BROKEN,
-    UNKNOWN
-};
+#include "enum.h"
 
 struct PageFaultInfo {
     FaultType faultType;

@@ -4,14 +4,9 @@
 #include "address_pool.h"
 #include "pageinfo.h"
 #include "rmap.h"
+#include "enum.h"
 // align只能为2的幂
 #define ALIGN(align, n) (((n) + ((align) - 1)) & ~((align) - 1))
-
-enum AddressPoolType
-{
-    USER,
-    KERNEL
-};
 
 class MemoryManager
 {

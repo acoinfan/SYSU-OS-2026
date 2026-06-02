@@ -7,11 +7,6 @@
 
 #define ListItem2PCB(ADDRESS, LIST_ITEM) ((PCB *)((int)(ADDRESS) - (int)&((PCB *)0)->LIST_ITEM))
 
-enum struct SchedulerType{
-   RR,
-   FIFS
-};
-
 
 class RRScheduler {
 private:

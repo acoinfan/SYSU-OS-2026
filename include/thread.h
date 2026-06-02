@@ -3,17 +3,9 @@
 
 #include "list.h"
 #include "os_constant.h"
+#include "enum.h"
 
 typedef void (*ThreadFunction)(void *);
-
-enum ProgramStatus
-{
-    CREATED,
-    RUNNING,
-    READY,
-    BLOCKED,
-    DEAD
-};
 
 struct PCB
 {
