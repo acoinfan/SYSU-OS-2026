@@ -299,6 +299,7 @@ int MemoryManager::allocatePhysicalPages(enum AddressPoolType type, const int co
     }
     // 单页,打PG_SINGLE标记
     if (count == 1) {
+        ASSERT(!pageinfos[pgi].hasFlag(PG_SINGLE));
         pageinfos[pgi].setFlag(PG_SINGLE);
     }
     return start;
@@ -319,6 +320,10 @@ void MemoryManager::releasePhysicalPages(enum AddressPoolType type, const int pa
     for (int i = 0; i < count; i++) {
         ASSERT(!pageinfos[pgi+i].hasFlag(PG_FREE));
         pageinfos[pgi+i].setFlag(PG_FREE);
+    }
+    if (count == 1) {
+        ASSERT(pageinfos[pgi].hasFlag(PG_SINGLE));
+        pageinfos[pgi].clearFlag(PG_SINGLE);
     }
 }
 
