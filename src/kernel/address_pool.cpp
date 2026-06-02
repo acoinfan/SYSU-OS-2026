@@ -20,6 +20,11 @@ void VAddressPool::initialize(char *bitmap, const int length, const uint32 start
     }
 }
 
+void VAddressPool::initialize(const VAddressPoolConfig& config) {
+    initialize(config.bitmap, config.length, config.start_addr, config.end_addr,
+                config.privilegePtr, config.static_privilege, config.is_static);
+}
+
 // 从地址池中分配count个连续页，成功则返回第一个页的地址，失败则返回-1
 // 若isStatic, 传入的privilege会被忽略
 int VAddressPool::allocate(const int count, VPageFlags privilege, bool reverse)
@@ -143,4 +148,33 @@ VictimInfo PAddressPool::findVictim(uint32 search_length, uint32 round)
     return {0, 0};
 }
 
-#include "os_modules.h"
+void UserVAddressPool::initialize(const struct SegBoundary& segBoundary, 
+                        const VAPConfig& heapConf, const VAPConfig& stackConf,
+                        const VAPConfig& mmapConf, const VAPConfig& TLSConf) {
+    this->segBoundary = segBoundary;
+    this->heapPool.initialize(heapConf);
+    this->stackPool.initialize(stackConf);
+    this->mmapPool.initialize(mmapConf);
+    this->TLSPool.initialize(TLSConf);
+}
+
+// TODO
+int UserVAddressPool::allocate(UserSegment seg, const uint32 count, VPageFlags privilege, bool reverse = false) {
+
+}
+
+void UserVAddressPool::release(UserSegment seg, const uint32 vaddr, const uint32 count) {
+
+}
+
+VPageFlags UserVAddressPool::getVPageFlag(UserSegment seg, const uint32 vaddr) {
+
+}
+
+const SegBoundary& UserVAddressPool::getBoundary(UserSegment seg) const {
+
+}
+
+bool UserVAddressPool::isValidAddr(const uint32 vaddr) const {
+    
+}

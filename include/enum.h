@@ -93,4 +93,15 @@ enum struct FaultType : uint8 {
     UNKNOWN
 };
 
+enum UserSegment {
+    HEAP,
+    STACK,
+    MMAP,
+    TLS,
+    TEXT,
+    DATA,
+    BSS
+};
+
+
 #endif
