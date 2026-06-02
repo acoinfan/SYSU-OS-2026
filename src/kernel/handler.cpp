@@ -8,6 +8,8 @@
 #include "pageinfo.h"
 
 void handle_kernel_page_fault(const PageFaultInfo& info) {
+    printf("faultType = %d\n", (int)info.faultType);
+    printf("Page Fault Handler: Hit at address 0x%x\n", info.addr);
     switch (info.faultType) {
         case FaultType::COPY_ON_WRITE: {
             break;
@@ -32,6 +34,10 @@ void handle_kernel_page_fault(const PageFaultInfo& info) {
                 memset((void*)vaddr, 0, PAGE_SIZE);
             }
             return;
+        }
+        default: {
+            asm_halt();
+
         }
     }
     // TODO: flush TLB

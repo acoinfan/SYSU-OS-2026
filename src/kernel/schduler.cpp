@@ -25,6 +25,7 @@ void RRScheduler::enqueue(PCB* readyThread) {
 PCB* RRScheduler::pickNext() {
     ListItem* item = readyPrograms.front();
     readyPrograms.pop_front();
+    if (!item) return nullptr;
     return ListItem2PCB(item, tagInGeneralList);
 }
 
@@ -83,6 +84,7 @@ void FIFSScheduler::enqueue(PCB* readyThread) {
 PCB* FIFSScheduler::pickNext() {
     ListItem* item = readyPrograms.front();
     readyPrograms.pop_front();
+    if (!item) return nullptr;
     return ListItem2PCB(item, tagInGeneralList);
 }
 

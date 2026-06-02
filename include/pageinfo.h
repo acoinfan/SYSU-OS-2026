@@ -19,6 +19,8 @@ enum PageFlags : uint16 {
 
     PG_KERNEL   =1<<5,   // 内核页
 
+    PG_SINGLE   =1<<6,   // Buddy中order=0的Page, 用于CLOCK算法
+    
     PG_ALL      =0xFFFF
 };
 /*

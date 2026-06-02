@@ -527,11 +527,14 @@ void MemoryManager::releasePages(enum AddressPoolType type, const int virtualAdd
     int *pte;
     for (int i = 0; i < count; ++i, vaddr += PAGE_SIZE)
     {
-        // 第一步，对每一个虚拟页，释放为其分配的物理页, 若属于Lazy Alloc, 则不处理
+        // 第一步，对每一个虚拟页，释放为其分配的物理页
         pte = (int *)toPTE(vaddr);
-        if ((*pte) & PTE_LAZY) {
+        // 若不存在PTE, 跳过释放
+        if (!((*pte) & PTE_PRESENT)) {
+            *pte = 0;
             continue;
-        }
+        } 
+   
         int paddr = vaddr2paddr(vaddr);
         int owner = programManager.running ? programManager.running->pid : 0;
         // DEBUG:

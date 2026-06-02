@@ -43,7 +43,7 @@ extern "C" void c_page_fault_handler()
                 faultType = FaultType::KERNEL_RESERVED;
             // Copy On Write
             } else if ((!(PTE & PTE_WRITABLE)) && (PTE & PTE_COW)) {
-                faultType = FaultType::COPY_ON_WRITE;\
+                faultType = FaultType::COPY_ON_WRITE;
             // Permission Violation
             } else if (((!(PTE & PTE_WRITABLE)) || (from_user && !(PTE & PTE_USER_ACCESS))) && (!(PTE & PTE_COW))) {
                 faultType = FaultType::PERMISSION_VIOLATION;
@@ -58,9 +58,6 @@ extern "C" void c_page_fault_handler()
     } else {
         handle_kernel_page_fault(info);
     }
-
-    printf("faultType = %d\n", (int)faultType);
-    printf("Page Fault Handler: Hit at address 0x%x\n", addr);
     return;
 }
 
@@ -103,7 +100,7 @@ void InterruptManager::initialize()
         setInterruptDescriptor(i, (uint32)asm_unhandled_interrupt, 0);
     }
 
-    setInterruptDescriptor(14, (uint32)c_page_fault_handler, 0);
+    setInterruptDescriptor(14, (uint32)asm_page_fault_handler, 0);
 
     // 初始化8259A芯片
     initialize8259A();

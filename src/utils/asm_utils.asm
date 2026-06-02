@@ -7,6 +7,7 @@ global asm_halt
 global asm_out_port
 global asm_in_port
 global asm_time_interrupt_handler
+global asm_page_fault_handler
 global asm_enable_interrupt
 global asm_enable_interrupt
 global asm_disable_interrupt
@@ -98,7 +99,15 @@ asm_enable_interrupt:
     sti
     ret
 asm_time_interrupt_handler:
+    push ds
+    push es
+    push fs
+    push gs
     pushad
+
+    mov ax, 0x10
+    mov ds, ax
+    mov es, ax
     
     ; 发送EOI消息，否则下一次中断不发生
     mov al, 0x20
@@ -108,7 +117,34 @@ asm_time_interrupt_handler:
     call c_time_interrupt_handler
 
     popad
+    pop gs
+    pop fs
+    pop es
+    pop ds
     iret
+
+asm_page_fault_handler:
+    cli
+    push ds
+    push es
+    push fs
+    push gs
+    pushad
+
+    mov ax, 0x10
+    mov ds, ax
+    mov es, ax
+
+    call c_page_fault_handler
+
+    popad
+    pop gs
+    pop fs
+    pop es
+    pop ds
+
+    add esp, 4            ; 弹出 CPU 压入的 error code
+    iretd
 
 ; void asm_in_port(uint16 port, uint8 *value)
 asm_in_port:

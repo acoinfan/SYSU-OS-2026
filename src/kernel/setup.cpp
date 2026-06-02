@@ -19,7 +19,7 @@ MemoryManager memoryManager;
 void first_thread(void *arg)
 {
     // 第1个线程不可以返回
-    // stdio.moveCursor(0);
+    // stdio.moveCursor(0);·
     // for (int i = 0; i < 25 * 80; ++i)
     // {
     //     stdio.print(' ');
@@ -28,7 +28,6 @@ void first_thread(void *arg)
     char* p0 = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, VP_RW);
     *p0 = 0;
     memoryManager.releasePages(AddressPoolType::KERNEL, (int)p0, 1);
-
     char *p1 = (char *)memoryManager.allocatePages(AddressPoolType::KERNEL, 100, VP_RW);
     char *p2 = (char *)memoryManager.allocatePages(AddressPoolType::KERNEL, 10, VP_RW);
     char *p3 = (char *)memoryManager.allocatePages(AddressPoolType::KERNEL, 100, VP_RW);
@@ -67,6 +66,16 @@ void first_thread(void *arg)
     asm_halt();
 }
 
+void idle_thread(void* arg) {
+    int pid = programManager.executeThread(first_thread, nullptr, "first thread", 1);
+    if (pid == -1)
+    {
+        printf("can not execute thread\n");
+        asm_halt();
+    }    
+    asm_halt();
+}
+
 extern "C" void setup_kernel()
 {
 
@@ -86,7 +95,7 @@ extern "C" void setup_kernel()
 
 
     // 创建第一个线程
-    int pid = programManager.executeThread(first_thread, nullptr, "first thread", 1);
+    int pid = programManager.executeThread(idle_thread, nullptr, "idle thread", 1);
     if (pid == -1)
     {
         printf("can not execute thread\n");
@@ -94,6 +103,7 @@ extern "C" void setup_kernel()
     }
 
     PCB* firstThread;
+    PCB rubbish;
     
     switch (programManager.sType) {
         case SchedulerType::RR:
@@ -107,7 +117,7 @@ extern "C" void setup_kernel()
     programManager.running = firstThread;
 
     // 第一次切换 pid=0
-    asm_switch_thread(nullptr, firstThread);
     interruptManager.enableTimeInterrupt();
+    asm_switch_thread(&rubbish, firstThread);
     asm_halt();
 }

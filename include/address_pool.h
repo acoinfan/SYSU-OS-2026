@@ -129,6 +129,11 @@ public:
     {
         resources.release((address - startAddress) / PAGE_SIZE, amount);
     }
+
+    int findVictim()
+    {
+        
+    }
 };
 
 
