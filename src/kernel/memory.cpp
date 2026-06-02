@@ -196,11 +196,15 @@ void MemoryManager::initialize()
     for (int i = 0; i < usedPages; i++) {
         // RESERVED, KERNEL, ref = 1
         pageinfos[i].setFlag(PG_RESERVED);
-        pageinfos[i].setFlag(PG_KERNEL);;
+        pageinfos[i].setFlag(PG_KERNEL);
 
         // 内核保留页不需要RMap
         pageinfos[i].ref = 1;
         pageinfos[i].extra = RMAP_PTR_NULL;
+    }
+
+    for (int i = usedPages; i < totalPages; i++) {
+        pageinfos[i].setFlag(PG_FREE);
     }
 
     printf("total memory: %d bytes ( %d MB )\n",
@@ -288,9 +292,14 @@ int MemoryManager::allocatePhysicalPages(enum AddressPoolType type, const int co
     int pgi = PA2PGI(start);
     // printf("pgi: %d\n", pgi);
     for (int i = 0; i < count; i++) {
+        ASSERT(pageinfos[pgi+i].hasFlag(PG_FREE));
         pageinfos[pgi+i].clear();
         if (type == AddressPoolType::KERNEL)
             pageinfos[pgi+i].setFlag(PG_KERNEL); 
+    }
+    // 单页,打PG_SINGLE标记
+    if (count == 1) {
+        pageinfos[pgi].setFlag(PG_SINGLE);
     }
     return start;
 }
@@ -305,6 +314,11 @@ void MemoryManager::releasePhysicalPages(enum AddressPoolType type, const int pa
     {
 
         userPhysical.release(paddr, count);
+    }
+    int pgi = PA2PGI(paddr);
+    for (int i = 0; i < count; i++) {
+        ASSERT(!pageinfos[pgi+i].hasFlag(PG_FREE));
+        pageinfos[pgi+i].setFlag(PG_FREE);
     }
 }
 
@@ -543,7 +557,6 @@ void MemoryManager::releasePages(enum AddressPoolType type, const int virtualAdd
         rmapManager.detach(&pageinfos[PA2PGI(paddr)], (uint32)pte, owner);
         pageinfos[PA2PGI(paddr)].dump();
         if (pageinfos[PA2PGI(paddr)].getRef() == 0) {
-            pageinfos[PA2PGI(paddr)].setFlag(PG_FREE);
             releasePhysicalPages(type, paddr, 1);
             // DEBUG:
             printf("Free VA=0x%x, PA=0x%x\n", vaddr, paddr);

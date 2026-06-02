@@ -25,6 +25,7 @@ void first_thread(void *arg)
     //     stdio.print(' ');
     // }
     // stdio.moveCursor(0);
+    interruptManager.disableTimeInterrupt();
     char* p0 = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, VP_RW);
     *p0 = 0;
     memoryManager.releasePages(AddressPoolType::KERNEL, (int)p0, 1);
