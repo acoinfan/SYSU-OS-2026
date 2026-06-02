@@ -52,16 +52,52 @@ public:
     BitMap resources;
     uint32 startAddress, endAddress;   // 左闭右闭
     VPageFlags* privileges;
+    bool isStatic;
+    VPageFlags static_privilege;
 public:
     VAddressPool() {}
+    
+    // 初始化地址池
+    void initialize(char *bitmap, const int length, const uint32 startAddress, 
+        const uint32 endAddress, const uint32 privileges, 
+        const VPageFlags static_privilege=(VPageFlags)(VP_RW|VP_USER), bool isStatic=false);
+        
+    // 从地址池中分配count个连续页，成功则返回第一个页的地址，失败则返回-1
+    int allocate(const int count, VPageFlags privilege, bool reverse = false);
+    
+    // 释放若干页的空间
+    void release(const uint32 address, const int amount);
+    
+    VPageFlags getVPageFlag(const uint32 vaddr);
+    
+    inline bool isValidAddr(const uint32 vaddr) {
+        return vaddr >= startAddress && vaddr <= endAddress;
+    }
+};
+
+
+class UserVAddressPool
+{
+public:
+    BitMap resources;
+    uint32 startAddress, endAddress;   // 左闭右闭
+    VPageFlags* privileges;
+public:
+    UserVAddressPool() {}
 
     // 初始化地址池
     void initialize(char *bitmap, const int length, const uint32 startAddress, 
                     const uint32 endAddress, const uint32 privileges);
 
     // 从地址池中分配count个连续页，成功则返回第一个页的地址，失败则返回-1
+    // 一般不使用
     int allocate(const int count, VPageFlags privilege);
 
+    uint32 allocateAt(const uint32 va, const uint32 count, VPageFlags privilege);
+    
+    // 左闭右开
+    uint32 allocateBetween(const uint32 va_start, const uint32 va_end,
+                            const uint32 count, VPageFlags privilege);
     // 释放若干页的空间
     void release(const uint32 address, const int amount);
 
@@ -71,7 +107,6 @@ public:
         return vaddr >= startAddress && vaddr <= endAddress;
     }
 };
-
 
 class PAddressPool
 {
@@ -94,4 +129,5 @@ public:
     VictimInfo findVictim(uint32 search_length=0, uint32 round=2);
 };
 
+typedef VAddressPool KernelVAddressPool;
 #endif

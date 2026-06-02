@@ -10,4 +10,4 @@ break setup_kernel
 # b first_thread
 # b releasePages
 # layout src
-b setup.cpp:33
+b setup.cpp:38

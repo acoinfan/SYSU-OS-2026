@@ -1,23 +1,38 @@
 #include "address_pool.h"
 #include "os_modules.h"
+#include "assert.h"
 
 // 初始化地址池
 void VAddressPool::initialize(char *bitmap, const int length, const uint32 startAddress,
-                                 const uint32 endAddress, const uint32 privileges)
+                                 const uint32 endAddress, const uint32 privileges,
+                                 const VPageFlags static_privilege, bool isStatic)
 {
     resources.initialize(bitmap, length);
     this->startAddress = startAddress;
     this->endAddress = endAddress;
-    this->privileges = (VPageFlags *)privileges;
+    this->isStatic = isStatic;
+    this->static_privilege = static_privilege;
+    if (isStatic) {
+        ASSERT(privileges == 0);
+        this->privileges = nullptr;
+    } else {
+        this->privileges = (VPageFlags *)privileges;
+    }
 }
 
 // 从地址池中分配count个连续页，成功则返回第一个页的地址，失败则返回-1
-int VAddressPool::allocate(const int count, VPageFlags privilege)
+// 若isStatic, 传入的privilege会被忽略
+int VAddressPool::allocate(const int count, VPageFlags privilege, bool reverse)
 {
-    int start = resources.allocate(count);
+    int start = resources.allocate(count, reverse);
     if (start != -1)
-    {
-        privileges[start] = privilege;
+    {   
+        if (!isStatic) {
+            for (int i = 0; i < count; i++) {
+                privileges[start+i] = privilege;
+            }
+
+        }
         return start * PAGE_SIZE + startAddress;
     }
     else
@@ -27,14 +42,24 @@ int VAddressPool::allocate(const int count, VPageFlags privilege)
 }
 
 // 释放若干页的空间
-void VAddressPool::release(const uint32 address, const int amount)
+void VAddressPool::release(const uint32 address, const int count)
 {
-    resources.release((address - startAddress) / PAGE_SIZE, amount);
+    int start = (address - startAddress) / PAGE_SIZE;
+    resources.release(start, count);
+    if (!isStatic) {
+        for (int i = 0; i < count; i++) {
+            privileges[start+i] = VP_CLEAR;
+        }
+
+    }
 }
 
 VPageFlags VAddressPool::getVPageFlag(const uint32 vaddr)
 {
     ASSERT(isValidAddr(vaddr));
+    if (isStatic) {
+        return this->static_privilege;
+    }
     uint32 idx = ((vaddr & ~0xfff) - startAddress) / PAGE_SIZE;
     ASSERT(resources.get(idx) == 1);
     return privileges[idx];

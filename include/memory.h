@@ -18,7 +18,7 @@ public:
     // 用户物理地址池
     PAddressPool userPhysical;
     // 内核虚拟地址池
-    VAddressPool kernelVirtual;
+    KernelVAddressPool kernelVirtual;
     PageInfo* pageinfos;
     RMapManager rmapManager;
 public:

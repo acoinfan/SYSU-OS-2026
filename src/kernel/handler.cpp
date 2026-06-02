@@ -22,7 +22,7 @@ void handle_kernel_page_fault(const PageFaultInfo& info) {
             int paddr = memoryManager.allocatePhysicalPages(AddressPoolType::KERNEL, 1);
             
             // Try Clock
-            if (paddr == -1 && (paddr = out_of_memory(AddressPoolType::KERNEL, 1)) == -1) {
+            if (paddr == 0 && (paddr = out_of_memory(AddressPoolType::KERNEL, 1)) == 0) {
                 printf("Page Fault: DEMAND_ZERO but OUT_OF_MEMORY, halt\n");
                 asm_halt();                
             } 
@@ -50,12 +50,13 @@ bool handle_user_page_fault(const PageFaultInfo& info) {
 }
 
 // 清除Victim块的信息，同时返回给Handler
+// return 0 as invalid addr
 int out_of_memory(enum AddressPoolType type, const int count) {
     // 拒绝大小不等于1的分配
-    if (count != 1) return -1;
+    if (count != 1) return 0;
 
     VictimInfo victimInfo = memoryManager.findVictim(type);
-    if (victimInfo.paddr == 0 && victimInfo.PTEptr == 0) return -1;
+    if (victimInfo.paddr == 0 && victimInfo.PTEptr == 0) return 0;
 
     // TODO: 清除原对应PTE信息, 这里暂时直接把原PTE清空
     *(uint32*)victimInfo.PTEptr = 0;

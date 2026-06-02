@@ -42,47 +42,85 @@ void BitMap::set(const int index, const bool status)
     }
 }
 
-int BitMap::allocate(const int count)
+int BitMap::allocate(const int count, bool reverse)
 {
     if (count == 0)
         return -1;
 
     int index, empty, start;
 
-    index = 0;
-    while (index < length)
-    {
-        // 越过已经分配的资源
-        while (index < length && get(index))
-            ++index;
-
-        // 不存在连续的count个资源
-        if (index == length)
-            return -1;
-
-        // 找到1个未分配的资源
-        // 检查是否存在从index开始的连续count个资源
-        empty = 0;
-        start = index;
-        while ((index < length) && (!get(index)) && (empty < count))
+    // 正向
+    if (!reverse) {
+        index = 0;
+        while (index < length)
         {
-            ++empty;
-            ++index;
-        }
-
-        // 存在连续的count个资源
-        if (empty == count)
-        {
-            for (int i = 0; i < count; ++i)
+            // 越过已经分配的资源
+            while (index < length && get(index))
+                ++index;
+    
+            // 不存在连续的count个资源
+            if (index == length)
+                return -1;
+    
+            // 找到1个未分配的资源
+            // 检查是否存在从index开始的连续count个资源
+            empty = 0;
+            start = index;
+            while ((index < length) && (!get(index)) && (empty < count))
             {
-                set(start + i, true);
+                ++empty;
+                ++index;
+            }
+    
+            // 存在连续的count个资源
+            if (empty == count)
+            {
+                for (int i = 0; i < count; ++i)
+                {
+                    set(start + i, true);
+                }
+    
+                return start;
+            }
+        }
+    
+        return -1;
+    // 反向
+    } else {
+        index = length - 1;
+        while (index >= 0)
+        {
+            // 越过已经分配的资源
+            while (index >= 0 && get(index)) {
+                index--;
             }
 
-            return start;
-        }
-    }
+            // 不存在连续的count个资源
+            if (index == -1) {
+                return -1;
+            }
 
-    return -1;
+            // 找到一个未分配的资源
+            // 开始向前探测
+            empty = 0;
+            start = index;
+            while ((index >= 0) && (!get(index)) && (empty < count)) 
+            {
+                ++empty;
+                --index;
+            }
+
+            if (empty == count)
+            {
+                for (int i = 0; i < count; ++i) 
+                {
+                    set(start-i, true);
+                }
+                return start - count + 1;
+            }
+        }
+        return -1;
+    }
 }
 
 void BitMap::release(const int index, const int count)
