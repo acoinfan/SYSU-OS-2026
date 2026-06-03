@@ -1,5 +1,7 @@
-org 0x7e00
 %include "boot.inc"
+extern open_page_mechanism
+global bootloader_start
+bootloader_start:
 [bits 16]
 ;空描述符
 mov dword [GDT_START_ADDRESS+0x00],0x00
@@ -63,7 +65,18 @@ load_kernel:
     add ebx, 512
     loop load_kernel
 
-jmp dword CODE_SELECTOR:KERNEL_START_ADDRESS       ; 跳转到kernel
+call open_page_mechanism
+mov eax, PAGE_DIRECTORY
+mov cr3, eax ; 放入页目录表地址
+mov eax, cr0
+or eax, 0x80000000
+mov cr0, eax           ; 置PG=1，开启分页机制
+
+sgdt [pgdt]
+add dword[pgdt + 2], 0xc0000000
+lgdt [pgdt]
+
+jmp dword CODE_SELECTOR:KERNEL_VIRTUAL_ADDRESS       ; 跳转到kernel
 
 jmp $ ; 死循环
 

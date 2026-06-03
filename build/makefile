@@ -12,6 +12,8 @@ CXX_SOURCE += $(KERNEL_SOURCE)
 CXX_OBJ += $(KERNEL_SOURCE:$(SRCDIR)/kernel/%.cpp=%.o)
 UTILS_SOURCE = $(wildcard $(SRCDIR)/utils/*.cpp)
 CXX_SOURCE += $(UTILS_SOURCE)
+BOOT_SOURCE = $(wildcard $(SRCDIR)/boot/*.cpp)
+CXX_SOURCE += $(BOOT_SOURCE)
 CXX_OBJ += $(UTILS_SOURCE:$(SRCDIR)/utils/%.cpp=%.o)
 ASM_SOURCE += $(wildcard $(SRCDIR)/utils/*.asm)
 ASM_OBJ += $(ASM_SOURCE:$(SRCDIR)/utils/%.asm=%.o)
@@ -25,8 +27,10 @@ build : mbr.bin bootloader.bin kernel.bin kernel.o
 mbr.bin : $(SRCDIR)/boot/mbr.asm
 	$(ASM_COMPILER) -o mbr.bin -f bin -I$(INCLUDE_PATH)/ $(SRCDIR)/boot/mbr.asm
 	
-bootloader.bin : $(SRCDIR)/boot/bootloader.asm 
-	$(ASM_COMPILER) -o bootloader.bin -f bin -I$(INCLUDE_PATH)/ $(SRCDIR)/boot/bootloader.asm
+bootloader.bin : $(SRCDIR)/boot/bootloader.asm stdlib.o page.o
+	$(ASM_COMPILER) -o bootloader.o -g -f elf32 -I$(INCLUDE_PATH)/ $(SRCDIR)/boot/bootloader.asm
+	$(LINKER) -o bootloader.obj -melf_i386 -N  bootloader.o page.o stdlib.o -Ttext 0x7e00 -e bootloader_start
+	objcopy -O binary bootloader.obj bootloader.bin
 	
 entry.obj : $(SRCDIR)/boot/entry.asm
 	$(ASM_COMPILER) -o entry.obj -g -f elf32 $(SRCDIR)/boot/entry.asm
@@ -35,8 +39,8 @@ kernel.bin : kernel.o
 	objcopy -O binary kernel.o kernel.bin
 	
 kernel.o : entry.obj $(OBJ)
-	$(LINKER) -o kernel.o -melf_i386 -N entry.obj $(OBJ) -e enter_kernel -Ttext 0x00020000
-	
+	$(LINKER) -o kernel.o -melf_i386 -N entry.obj $(OBJ) -Ttext 0xc0020000 -e enter_kernel
+
 $(CXX_OBJ): $(CXX_SOURCE)
 	$(CXX_COMPLIER) $(CXX_COMPLIER_FLAGS) -I$(INCLUDE_PATH) -c $(CXX_SOURCE)
 	

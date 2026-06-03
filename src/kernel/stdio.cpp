@@ -12,7 +12,7 @@ STDIO::STDIO()
 
 void STDIO::initialize()
 {
-    screen = (uint8 *)0xb8000;
+    screen = (uint8 *)SCREEN_MEMORY;
 }
 
 void STDIO::print(uint x, uint y, uint8 c, uint8 color)

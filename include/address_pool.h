@@ -60,6 +60,7 @@ inline PTEFlags vPageFlags2PTE(VPageFlags flags)
 class VAddressPool
 {
 public:
+    int length;
     BitMap resources;
     uint32 startAddress, endAddress;   // 左闭右闭
     VPageFlags* privileges;

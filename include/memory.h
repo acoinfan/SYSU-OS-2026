@@ -37,9 +37,6 @@ public:
     // 获取内存总容量
     int getTotalMemory();
 
-    // 开启分页机制
-    void openPageMechanism();
-
     // 页内存分配
     int allocatePages(enum AddressPoolType type, const int count, const VPageFlags flag);
 

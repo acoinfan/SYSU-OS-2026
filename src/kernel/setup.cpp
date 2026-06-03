@@ -146,7 +146,6 @@ extern "C" void setup_kernel()
     programManager.initialize(SchedulerType::RR);
 
     // 内存管理器
-    memoryManager.openPageMechanism();
     memoryManager.initialize();
 
 

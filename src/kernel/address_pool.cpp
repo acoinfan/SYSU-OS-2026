@@ -8,12 +8,13 @@ void VAddressPool::initialize(char *bitmap, const int length, const uint32 start
                                  const uint32 endAddress, const uint32 privileges,
                                  const VPageFlags static_privilege, bool isStatic)
 {
+    this->length = length;
     resources.initialize(bitmap, length);
     this->startAddress = startAddress;
     this->endAddress = endAddress;
     this->isStatic = isStatic;
     this->static_privilege = static_privilege;
-    ASSERT(length == endAddress - startAddress + 1); // 左闭右闭
+    ASSERT(length == (endAddress - startAddress + 1) / PAGE_SIZE); // 左闭右闭
     if (isStatic) {
         ASSERT(privileges == 0);
         this->privileges = nullptr;
@@ -28,8 +29,8 @@ void VAddressPool::initialize(const VAddressPoolConfig& config) {
 }
 
 void VAddressPool::initialize(const VAddressPool& parent, char *bitmap, const uint32 privileges) {
-    uint32 length = parent.endAddress - parent.startAddress + 1;
-    resources.initialize(bitmap, length);
+    this->length = parent.length;
+    resources.initialize(bitmap, parent.length);
 
     this->startAddress = parent.startAddress;
     this->endAddress = parent.endAddress;
