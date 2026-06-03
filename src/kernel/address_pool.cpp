@@ -1,6 +1,7 @@
 #include "address_pool.h"
 #include "os_modules.h"
 #include "assert.h"
+#include "stdlib.h"
 
 // 初始化地址池
 void VAddressPool::initialize(char *bitmap, const int length, const uint32 startAddress,
@@ -12,6 +13,7 @@ void VAddressPool::initialize(char *bitmap, const int length, const uint32 start
     this->endAddress = endAddress;
     this->isStatic = isStatic;
     this->static_privilege = static_privilege;
+    ASSERT(length == endAddress - startAddress + 1); // 左闭右闭
     if (isStatic) {
         ASSERT(privileges == 0);
         this->privileges = nullptr;
@@ -23,6 +25,24 @@ void VAddressPool::initialize(char *bitmap, const int length, const uint32 start
 void VAddressPool::initialize(const VAddressPoolConfig& config) {
     initialize(config.bitmap, config.length, config.start_addr, config.end_addr,
                 config.privilegePtr, config.static_privilege, config.is_static);
+}
+
+void VAddressPool::initialize(const VAddressPool& parent, char *bitmap, const uint32 privileges) {
+    uint32 length = parent.endAddress - parent.startAddress + 1;
+    resources.initialize(bitmap, length);
+
+    this->startAddress = parent.startAddress;
+    this->endAddress = parent.endAddress;
+    this->isStatic = parent.isStatic;
+    this->static_privilege = parent.static_privilege;
+
+    if (this->isStatic) {
+        ASSERT(parent.privileges == 0);
+        ASSERT(privileges == 0);
+        this->privileges = nullptr;
+    } else {
+        this->privileges = (VPageFlags *)privileges;
+    }
 }
 
 // 从地址池中分配count个连续页，成功则返回第一个页的地址，失败则返回-1
@@ -61,10 +81,11 @@ void VAddressPool::release(const uint32 address, const int count)
 
 VPageFlags VAddressPool::getVPageFlag(const uint32 vaddr)
 {
-    ASSERT(isValidAddr(vaddr));
     if (isStatic) {
         return this->static_privilege;
     }
+    // 对于Static池, 不做检测
+    ASSERT(isValidAddr(vaddr));
     uint32 idx = ((vaddr & ~0xfff) - startAddress) / PAGE_SIZE;
     ASSERT(resources.get(idx) == 1);
     return privileges[idx];
@@ -151,30 +172,144 @@ VictimInfo PAddressPool::findVictim(uint32 search_length, uint32 round)
 void UserVAddressPool::initialize(const struct SegBoundary& segBoundary, 
                         const VAPConfig& heapConf, const VAPConfig& stackConf,
                         const VAPConfig& mmapConf, const VAPConfig& TLSConf) {
+    ASSERT(!this->isInitialized);
     this->segBoundary = segBoundary;
     this->heapPool.initialize(heapConf);
     this->stackPool.initialize(stackConf);
     this->mmapPool.initialize(mmapConf);
     this->TLSPool.initialize(TLSConf);
+    this->isInitialized = true;
+    ASSERT(heapPool.isStatic && stackPool.isStatic);
+    ASSERT(heapPool.getVPageFlag(0) == (VP_RW|VP_USER));
+    ASSERT(stackPool.getVPageFlag(0) == (VP_RW|VP_USER));
 }
 
-// TODO
-int UserVAddressPool::allocate(UserSegment seg, const uint32 count, VPageFlags privilege, bool reverse = false) {
+bool UserVAddressPool::cloneFrom(const UserVAddressPool& parent, const VPoolBuffers& vpoolBuf) {
+    ASSERT(!this->isInitialized);
+    if (!parent.isInitialized) return false;
 
+    // Copy Parameters
+    this->segBoundary = parent.segBoundary;
+    this->heapPool.initialize(parent.heapPool, (char*)vpoolBuf.heapBitmap, 0);
+    this->stackPool.initialize(parent.stackPool, (char*)vpoolBuf.stackBitmap, 0);
+    this->TLSPool.initialize(parent.TLSPool, (char*)vpoolBuf.TLSBitmap, vpoolBuf.TLSPrivileges);
+    this->mmapPool.initialize(parent.mmapPool, (char*)vpoolBuf.mmapBitmap, vpoolBuf.mmapPrivileges);
+    ASSERT(heapPool.isStatic && stackPool.isStatic);
+    ASSERT(heapPool.getVPageFlag(0) == (VP_RW|VP_USER));
+    ASSERT(stackPool.getVPageFlag(0) == (VP_RW|VP_USER));
+    
+    // DeepCopy BitMap, VPageFlags(Only TLS & mmap)
+    uint32 heapLength = this->heapPool.endAddress - this->heapPool.startAddress + 1;
+    uint32 stackLength = this->stackPool.endAddress - this->stackPool.startAddress + 1;
+    uint32 TLSLength = this->TLSPool.endAddress - this->TLSPool.startAddress + 1;
+    uint32 mmapLength = this->mmapPool.endAddress - this->mmapPool.startAddress + 1;
+
+    // Bitmap memcpy
+    memcpy((void*)vpoolBuf.heapBitmap, parent.heapPool.resources.bitmap, ceil(heapLength, 8));
+    memcpy((void*)vpoolBuf.stackBitmap, parent.stackPool.resources.bitmap, ceil(stackLength, 8));
+    memcpy((void*)vpoolBuf.TLSBitmap, parent.TLSPool.resources.bitmap, ceil(TLSLength, 8));
+    memcpy((void*)vpoolBuf.mmapBitmap, parent.mmapPool.resources.bitmap, ceil(mmapLength, 8));
+
+    // Privileges memcpy
+    memcpy((void*)vpoolBuf.TLSPrivileges, parent.TLSPool.privileges, TLSLength * sizeof(VPageFlags));
+    memcpy((void*)vpoolBuf.mmapPrivileges, parent.mmapPool.privileges, mmapLength * sizeof(VPageFlags));
+    return true;
+}
+
+// 成功则返回第一个页的地址，失败则返回-1
+int UserVAddressPool::allocate(UserSegment seg, const uint32 count, VPageFlags privilege, bool reverse) {
+    switch (seg) {
+        case UserSegment::TEXT:
+        case UserSegment::DATA:
+        case UserSegment::BSS:
+            return -1;
+
+        case UserSegment::HEAP:
+            return heapPool.allocate(count, VP_CLEAR, /*reverse=*/false);   // Privilege不会影响固定池
+        case UserSegment::STACK:
+            return stackPool.allocate(count, VP_CLEAR, /*reverse=*/true);
+        case UserSegment::TLS:
+            return TLSPool.allocate(count, privilege, reverse);
+        case UserSegment::MMAP:
+            return mmapPool.allocate(count, privilege, reverse);
+        default:
+            return -1;
+    }
 }
 
 void UserVAddressPool::release(UserSegment seg, const uint32 vaddr, const uint32 count) {
+    switch (seg) {
+        case UserSegment::TEXT:
+        case UserSegment::DATA:
+        case UserSegment::BSS:
+            return;
 
+        case UserSegment::HEAP:
+            return heapPool.release(vaddr, count);  
+        case UserSegment::STACK:
+            return stackPool.release(vaddr, count);
+        case UserSegment::TLS:
+            return TLSPool.release(vaddr, count);
+        case UserSegment::MMAP:
+            return mmapPool.release(vaddr, count);
+        default:
+            return;
+    }
 }
 
 VPageFlags UserVAddressPool::getVPageFlag(UserSegment seg, const uint32 vaddr) {
+    switch (seg) {
+        // 固定
+        case UserSegment::TEXT:
+            return VP_USER;
+        case UserSegment::DATA:
+            return (VPageFlags)(VP_RW|VP_USER);
+        case UserSegment::BSS:
+            return (VPageFlags)(VP_RW|VP_USER);
 
+        // 理论均为 VP_RW | VP_USER
+        case UserSegment::HEAP:
+            return heapPool.getVPageFlag(vaddr);   
+        case UserSegment::STACK:
+            return stackPool.getVPageFlag(vaddr);
+        
+        // 动态
+        case UserSegment::TLS:
+            return TLSPool.getVPageFlag(vaddr);
+        case UserSegment::MMAP:
+            return mmapPool.getVPageFlag(vaddr);
+        default:
+            ASSERT(0);
+    }
 }
 
-const SegBoundary& UserVAddressPool::getBoundary(UserSegment seg) const {
+Boundary UserVAddressPool::getBoundary(UserSegment seg) const {
+    switch (seg) {
+        // 固定
+        case UserSegment::TEXT:
+            return segBoundary.text;
+        case UserSegment::DATA:
+            return segBoundary.data;
+        case UserSegment::BSS:
+            return segBoundary.bss;
 
+        // 理论均为 VP_RW | VP_USER
+        case UserSegment::HEAP:
+            return {heapPool.startAddress, heapPool.endAddress};  
+        case UserSegment::STACK:
+            return {stackPool.startAddress, stackPool.endAddress};
+        
+        // 动态
+        case UserSegment::TLS:
+            return {TLSPool.startAddress, TLSPool.endAddress};
+        case UserSegment::MMAP:
+            return {mmapPool.startAddress, mmapPool.endAddress};
+        default:
+            ASSERT(0);
+    }
 }
 
 bool UserVAddressPool::isValidAddr(const uint32 vaddr) const {
-    
+    return false;// TODO
 }
+

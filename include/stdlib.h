@@ -19,4 +19,6 @@ void memset(void *memory, char value, int length);
 // 上取整
 int ceil(const int dividend, const int divisor);
 
+void *memcpy(void *str1, const void *str2, uint32 n);
+
 #endif

@@ -74,6 +74,7 @@ public:
         const VPageFlags static_privilege=(VPageFlags)(VP_RW|VP_USER), bool isStatic=false);
     
     void initialize(const VAddressPoolConfig& config);
+    void initialize(const VAddressPool& parent, char *bitmap, const uint32 privileges);
 
     // 从地址池中分配count个连续页，成功则返回第一个页的地址，失败则返回-1
     int allocate(const int count, VPageFlags privilege, bool reverse = false);
@@ -88,11 +89,22 @@ public:
     }
 };
 
-struct SegBoundary {
-    uint32 textStart, textEnd;
-    uint32 dataStart, dataEnd;
-    uint32 bssStart, bssEnd;
+// 左闭右闭
+struct Boundary {
+    uint32 start, end;
 };
+
+struct SegBoundary {
+    Boundary text, data, bss;
+};
+
+struct VPoolBuffers {
+    uint32 heapBitmap, heapPrivileges = 0;
+    uint32 stackBitmap, stackPrivileges = 0;
+    uint32 mmapBitmap, mmapPrivileges;
+    uint32 TLSBitmap, TLSPrivileges;
+};
+
 class UserVAddressPool
 {
 public:
@@ -101,6 +113,7 @@ public:
     VAddressPool stackPool;
     VAddressPool mmapPool; 
     VAddressPool TLSPool;
+    bool isInitialized = false;
 public:
     UserVAddressPool() {}
 
@@ -108,6 +121,9 @@ public:
     void initialize(const struct SegBoundary& segBoundary, 
                     const VAPConfig& heapConf, const VAPConfig& stackConf,
                     const VAPConfig& mmapConf, const VAPConfig& TLSConf);
+    
+    // fork初始化地址池
+    bool cloneFrom(const UserVAddressPool& parent, const VPoolBuffers& vpoolBuf);
 
     int allocate(UserSegment seg, const uint32 count, VPageFlags privilege, bool reverse = false);
 
@@ -115,9 +131,10 @@ public:
 
     VPageFlags getVPageFlag(UserSegment seg, const uint32 vaddr);
 
-    const SegBoundary& getBoundary(UserSegment seg) const;
+    Boundary getBoundary(UserSegment seg) const;
 
     bool isValidAddr(const uint32 vaddr) const;
+
 };
 
 class PAddressPool

@@ -53,6 +53,23 @@ int ceil(const int dividend, const int divisor) {
     return (dividend + divisor - 1) / divisor;
 }
 
+void *memcpy(void *str1, const void *str2, uint32 n) {
+    if (((uint32)str1 & 3U) || ((uint32)str2 & 3U)) {
+        for (uint32 i = 0; i < n; i++) {
+            ((char*)str1)[i] = ((char*)str2)[i];
+        }
+    } else {
+        for (uint32 i = 0; i < n/4; i++) {
+            ((uint32*)str1)[i] = ((uint32*)str2)[i];
+        }
+        for (uint32 i = n - n%4; i < n; i++) {
+            ((char*)str1)[i] = ((char*)str2)[i];
+        }
+    }
+    return str1;
+}
+
+
 extern "C" {
 
 void __cxa_atexit(void (*)(void *), void *, void *) {}

@@ -10,4 +10,5 @@ break setup_kernel
 # b first_thread
 # b releasePages
 # layout src
-b setup.cpp:38
+b idle_thread
+layout src

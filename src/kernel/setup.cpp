@@ -74,8 +74,55 @@ void first_thread(void *arg)
     asm_halt();
 }
 
+void test_out_of_memory(void* arg) {
+    printf("Out Of Memory Begin\n");
+    interruptManager.disableTimeInterrupt();
+    char* p0 = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, VP_RW);
+    char* p1 = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, VP_RW);
+
+    // OK
+    *p0 = 0;
+    printf("Part 1 OK\n");
+    // FAIL
+    *p1 = 0;
+    printf("Never Reach Here\n");
+    interruptManager.enableTimeInterrupt(); 
+    return;
+}
+void test_lazy_alloc_thread(void* arg) {
+    printf("Lazy Alloc Begin\n");
+    interruptManager.disableTimeInterrupt();
+    char* p0 = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, VP_RW);
+    // LAZY ALLOC RELEASE
+    memoryManager.releasePages(AddressPoolType::KERNEL, (int)p0, 1);
+
+    // LAZY ALLOC TEST
+    p0 = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, VP_RW);
+    *p0 = 0;
+    
+    // LAZY_ALLOC & FIND_VICTIM
+    char* testp = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, VP_RW);
+    *testp = 0;
+
+    // VICTIM_RELEASE
+    memoryManager.releasePages(AddressPoolType::KERNEL, (int)p0, 1);
+    // LAZY ALLOC RELEASE
+    memoryManager.releasePages(AddressPoolType::KERNEL, (int)testp, 1);
+    printf("Lazy Alloc Done\n");
+    interruptManager.enableTimeInterrupt();
+
+    int pid = programManager.executeThread(test_out_of_memory, nullptr, "test_out_of_memory", 1);
+    if (pid == -1)
+    {
+        printf("can not execute thread\n");
+        asm_halt();
+    }
+    return;
+}
+
+
 void idle_thread(void* arg) {
-    int pid = programManager.executeThread(first_thread, nullptr, "first thread", 1);
+    int pid = programManager.executeThread(test_lazy_alloc_thread, nullptr, "test_lazy_alloc_thread", 1);
     if (pid == -1)
     {
         printf("can not execute thread\n");
@@ -90,6 +137,7 @@ extern "C" void setup_kernel()
     // 中断管理器
     interruptManager.initialize();
     interruptManager.setTimeInterrupt((void *)asm_time_interrupt_handler);
+    interruptManager.enableTimeInterrupt();
 
     // 输出管理器
     stdio.initialize();
@@ -125,7 +173,7 @@ extern "C" void setup_kernel()
     programManager.running = firstThread;
 
     // 第一次切换 pid=0
-    interruptManager.enableTimeInterrupt();
+
     asm_switch_thread(&rubbish, firstThread);
     asm_halt();
 }
