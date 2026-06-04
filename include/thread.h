@@ -4,6 +4,7 @@
 #include "list.h"
 #include "os_constant.h"
 #include "enum.h"
+#include "address_pool.h"
 
 typedef void (*ThreadFunction)(void *);
 
@@ -18,6 +19,9 @@ struct PCB
     int ticksPassedBy;               // 线程已执行时间
     ListItem tagInGeneralList;       // 线程队列标识
     ListItem tagInAllList;           // 线程队列标识
+
+    UserVAddressPool userVirtual;    // 用户程序虚拟地址池
+    int pageDirectoryAddress;        // 页目录表地址
 };
 
 #endif

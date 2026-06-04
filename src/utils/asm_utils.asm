@@ -7,7 +7,6 @@ global asm_halt
 global asm_out_port
 global asm_in_port
 global asm_time_interrupt_handler
-global asm_page_fault_handler
 global asm_enable_interrupt
 global asm_enable_interrupt
 global asm_disable_interrupt
@@ -15,9 +14,18 @@ global asm_interrupt_status
 global asm_switch_thread
 global asm_atomic_exchange
 global asm_init_page_reg
-global asm_get_page_error_addr
+global asm_system_call
+global asm_system_call_handler
+global asm_ltr
+global asm_add_global_descriptor
+global asm_start_process
+global asm_update_cr3
 
 extern c_time_interrupt_handler
+extern system_call_table
+
+global asm_page_fault_handler
+global asm_get_page_error_addr
 extern c_page_fault_handler
 
 ASM_UNHANDLED_INTERRUPT_INFO db 'Unhandled interrupt happened, halt...'
@@ -224,6 +232,137 @@ asm_get_page_error_addr:
     mov ebp, esp
     mov eax, cr2
     pop ebp
+    ret
+
+; void asm_update_cr3(int address)
+asm_update_cr3:
+    push eax
+    mov eax, dword[esp+8]
+    mov cr3, eax
+    pop eax
+    ret
+
+; void asm_start_process(int stack);
+asm_start_process:
+    ;jmp $
+    mov eax, dword[esp+4]
+    mov esp, eax
+    popad
+    pop gs;
+    pop fs;
+    pop es;
+    pop ds;
+
+    iret
+
+; void asm_ltr(int tr)
+asm_ltr:
+    ltr word[esp + 1 * 4]
+    ret
+
+; int asm_add_global_descriptor(int low, int high);
+asm_add_global_descriptor:
+    push ebp
+    mov ebp, esp
+
+    push ebx
+    push esi
+
+    sgdt [ASM_GDTR]
+    mov ebx, [ASM_GDTR + 2] ; GDT地址
+    xor esi, esi
+    mov si, word[ASM_GDTR] ; GDT界限
+    add esi, 1
+
+    mov eax, [ebp + 2 * 4] ; low
+    mov dword [ebx + esi], eax
+    mov eax, [ebp + 3 * 4] ; high
+    mov dword [ebx + esi + 4], eax
+
+    mov eax, esi
+    shr eax, 3
+
+    add word[ASM_GDTR], 8
+    lgdt [ASM_GDTR]
+
+    pop esi
+    pop ebx
+    pop ebp
+
+    ret
+; int asm_systerm_call_handler();
+asm_system_call_handler:
+    push ds
+    push es
+    push fs
+    push gs
+    pushad
+
+    push eax
+
+    ; 栈段会从tss中自动加载
+
+    mov eax, DATA_SELECTOR
+    mov ds, eax
+    mov es, eax
+
+    mov eax, VIDEO_SELECTOR
+    mov gs, eax
+
+    pop eax
+
+    ; 参数压栈
+    push edi
+    push esi
+    push edx
+    push ecx
+    push ebx
+
+    sti    
+    call dword[system_call_table + eax * 4]
+    cli
+
+    add esp, 5 * 4
+    
+    mov [ASM_TEMP], eax
+    popad
+    pop gs
+    pop fs
+    pop es
+    pop ds
+    mov eax, [ASM_TEMP]
+    
+    iret
+
+; int asm_system_call(int index, int first = 0, 
+;                     int second = 0, int third = 0, 
+;                     int forth = 0, int fifth = 0);
+asm_system_call:
+    push ebp
+    mov ebp, esp
+
+    push ebx
+    push ecx
+    push edx
+    push esi
+    push edi
+
+    mov eax, [ebp + 2 * 4]
+    mov ebx, [ebp + 3 * 4]
+    mov ecx, [ebp + 4 * 4]
+    mov edx, [ebp + 5 * 4]
+    mov esi, [ebp + 6 * 4]
+    mov edi, [ebp + 7 * 4]
+
+    int 0x80
+
+    pop edi
+    pop esi
+    pop edx
+    pop ecx
+    pop ebx
+    pop ebp
+
     ret
 
 asm_hello_world:

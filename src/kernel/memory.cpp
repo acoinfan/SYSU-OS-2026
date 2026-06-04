@@ -346,10 +346,10 @@ int MemoryManager::getTotalMemory()
     return this->totalMemory;
 }
 
-int MemoryManager::allocatePages(enum AddressPoolType type, const int count, const VPageFlags vFlag)
+int MemoryManager::allocatePages(enum AddressPoolType type, const int count, const VPageFlags vFlag, UserSegment userSegment)
 {
     // 第一步：从虚拟地址池中分配若干虚拟页
-    int virtualAddress = allocateVirtualPages(type, count, vFlag);
+    int virtualAddress = allocateVirtualPages(type, count, vFlag, userSegment);
 
     if (!virtualAddress)
     {
@@ -384,20 +384,26 @@ int MemoryManager::allocatePages(enum AddressPoolType type, const int count, con
             // 前i个页表已经指定了物理页
             releasePages(type, virtualAddress, i);
             // 剩余的页表未指定物理页
-            releaseVirtualPages(type, virtualAddress + i * PAGE_SIZE, count - i);
+            releaseVirtualPages(type, virtualAddress + i * PAGE_SIZE, count - i, userSegment);
             return 0;
         }
     }
     return virtualAddress;
 }
 
-int MemoryManager::allocateVirtualPages(enum AddressPoolType type, const int count, const VPageFlags vFlag)
+int MemoryManager::allocateVirtualPages(enum AddressPoolType type, const int count, const VPageFlags vFlag, UserSegment userSegment)
 {
     int start = -1;
 
     if (type == AddressPoolType::KERNEL)
     {
+        ASSERT(userSegment == UserSegment::EMPTY);
         start = kernelVirtual.allocate(count, vFlag);
+    } 
+    else if (type == AddressPoolType::USER) 
+    {
+        ASSERT(userSegment != UserSegment::EMPTY);
+        start = programManager.running->userVirtual.allocate(userSegment, count, vFlag);
     }
 
     return (start == -1) ? 0 : start;
@@ -472,7 +478,7 @@ int MemoryManager::toPTE(const int virtualAddress)
     return (0xffc00000 + ((virtualAddress & 0xffc00000) >> 10) + (((virtualAddress & 0x003ff000) >> 12) * 4));
 }
 
-void MemoryManager::releasePages(enum AddressPoolType type, const int virtualAddress, const int count)
+void MemoryManager::releasePages(enum AddressPoolType type, const int virtualAddress, const int count, UserSegment userSegment)
 {
     int vaddr = virtualAddress;
     int *pte;
@@ -506,7 +512,7 @@ void MemoryManager::releasePages(enum AddressPoolType type, const int virtualAdd
     }
 
     // 第二步，释放虚拟页
-    releaseVirtualPages(type, virtualAddress, count);
+    releaseVirtualPages(type, virtualAddress, count, userSegment);
 }
 
 int MemoryManager::vaddr2paddr(int vaddr)
@@ -517,16 +523,22 @@ int MemoryManager::vaddr2paddr(int vaddr)
     return (page + offset);
 }
 
-void MemoryManager::releaseVirtualPages(enum AddressPoolType type, const int vaddr, const int count)
+void MemoryManager::releaseVirtualPages(enum AddressPoolType type, const int vaddr, const int count, UserSegment userSegment)
 {
     if (type == AddressPoolType::KERNEL)
-    {
+    {   
+        ASSERT(userSegment == UserSegment::EMPTY);
         kernelVirtual.release(vaddr, count);
+    }
+    else if (type == AddressPoolType::USER)
+    {
+        ASSERT(userSegment != UserSegment::EMPTY);
+        programManager.running->userVirtual.release(userSegment, vaddr, count);
     }
 }
 
-int MemoryManager::allocatePagesLazy(enum AddressPoolType type, const VPageFlags flag) {
-    int vaddr = allocateVirtualPages(type, 1, flag);
+int MemoryManager::allocatePagesLazy(enum AddressPoolType type, const VPageFlags flag, UserSegment userSegment) {
+    int vaddr = allocateVirtualPages(type, 1, flag, userSegment);
     if (vaddr == -1) return -1;
 
     // 计算虚拟地址对应的页目录项和页表项

@@ -12,6 +12,11 @@ class ProgramManager
 public:
     List allPrograms;   // 所有状态的线程/进程的队列
     PCB *running;       // 当前执行的线程
+
+    int USER_CODE_SELECTOR;  // 用户代码段选择子
+    int USER_DATA_SELECTOR;  // 用户数据段选择子
+    int USER_STACK_SELECTOR; // 用户栈段选择子
+
     SchedulerType sType;      // 当前 scheduler 类型
     RRScheduler rrScheduler;
     FIFSScheduler fifsScheduler;
@@ -21,6 +26,7 @@ public:
     
     void initialize(SchedulerType _sType);
 
+    void initializeTSS();
     // 创建一个线程并放入就绪队列
 
     // function：线程执行的函数

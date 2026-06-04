@@ -25,6 +25,19 @@ void ProgramManager::initialize(SchedulerType _sType)
         PCB_SET_STATUS[i] = false;
     }
 
+    int selector;
+
+    selector = asm_add_global_descriptor(USER_CODE_LOW, USER_CODE_HIGH);
+    USER_CODE_SELECTOR = (selector << 3) | 0x3;
+
+    selector = asm_add_global_descriptor(USER_DATA_LOW, USER_DATA_HIGH);
+    USER_DATA_SELECTOR = (selector << 3) | 0x3;
+
+    selector = asm_add_global_descriptor(USER_STACK_LOW, USER_STACK_HIGH);
+    USER_STACK_SELECTOR = (selector << 3) | 0x3;
+
+    initializeTSS();
+
     switch (sType) {
         case SchedulerType::RR:
             rrScheduler.initialize(allPrograms);
@@ -33,6 +46,28 @@ void ProgramManager::initialize(SchedulerType _sType)
             fifsScheduler.initialize(allPrograms);
             break;
     }
+}
+
+void ProgramManager::initializeTSS()
+{
+
+    int size = sizeof(TSS);
+    int address = (int)&tss;
+
+    memset((char *)address, 0, size);
+    tss.ss0 = STACK_SELECTOR; // 内核态堆栈段选择子
+
+    int low, high, limit;
+
+    limit = size - 1;
+    low = (address << 16) | (limit & 0xff);
+    // DPL = 0
+    high = (address & 0xff000000) | ((address & 0x00ff0000) >> 16) | ((limit & 0xff00) << 16) | 0x00008900;
+
+    int selector = asm_add_global_descriptor(low, high);
+    // RPL = 0
+    asm_ltr(selector << 3);
+    tss.ioMap = address + size;
 }
 
 int ProgramManager::executeThread(ThreadFunction function, void *parameter, const char *name, int priority)

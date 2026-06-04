@@ -60,3 +60,8 @@ MAX_TOTAL_NODES 32768     ; buddy.h
         10          10        12
 VA = [PDE Index][PTE Index][bias]
 PA =        [PAGE PA]      [bias]
+
+// syscall
+
+execve: execve->programManager::executeProcess(加入READY,提前分析elf,设置对应信息)
+load_process: 真正将_start位置传入,预留ProcessStartStack用于调用asm_start_process

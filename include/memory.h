@@ -38,13 +38,13 @@ public:
     int getTotalMemory();
 
     // 页内存分配
-    int allocatePages(enum AddressPoolType type, const int count, const VPageFlags flag);
+    int allocatePages(enum AddressPoolType type, const int count, const VPageFlags flag, UserSegment userSegment = UserSegment::EMPTY);
 
     // 页内存懒分配
-    int allocatePagesLazy(enum AddressPoolType type, const VPageFlags flag);
+    int allocatePagesLazy(enum AddressPoolType type, const VPageFlags flag, UserSegment userSegment = UserSegment::EMPTY);
 
     // 虚拟页分配
-    int allocateVirtualPages(enum AddressPoolType type, const int count, const VPageFlags flag);
+    int allocateVirtualPages(enum AddressPoolType type, const int count, const VPageFlags flag, UserSegment userSegment = UserSegment::EMPTY);
 
     // 建立虚拟页到物理页的联系
     bool connectPhysicalVirtualPage(const int virtualAddress, const int physicalPageAddress);
@@ -56,13 +56,13 @@ public:
     int toPTE(const int virtualAddress);
 
     // 页内存释放
-    void releasePages(enum AddressPoolType type, const int virtualAddress, const int count);    
+    void releasePages(enum AddressPoolType type, const int virtualAddress, const int count, UserSegment userSegment = UserSegment::EMPTY);    
 
     // 找到虚拟地址对应的物理地址
     int vaddr2paddr(int vaddr);
 
     // 释放虚拟页
-    void releaseVirtualPages(enum AddressPoolType type, const int vaddr, const int count);
+    void releaseVirtualPages(enum AddressPoolType type, const int vaddr, const int count, UserSegment userSegment = UserSegment::EMPTY);
 
     // CLOCK (0,0) is Invalid
     VictimInfo findVictim(enum AddressPoolType type);

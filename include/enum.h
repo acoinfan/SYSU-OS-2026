@@ -94,6 +94,7 @@ enum struct FaultType : uint8 {
 };
 
 enum UserSegment {
+    EMPTY,
     HEAP,
     STACK,
     MMAP,
