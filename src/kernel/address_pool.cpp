@@ -80,7 +80,7 @@ void VAddressPool::release(const uint32 address, const int count)
     }
 }
 
-VPageFlags VAddressPool::getVPageFlag(const uint32 vaddr)
+VPageFlags VAddressPool::getVPageFlag(const uint32 vaddr) const
 {
     if (isStatic) {
         return this->static_privilege;
@@ -90,6 +90,11 @@ VPageFlags VAddressPool::getVPageFlag(const uint32 vaddr)
     uint32 idx = ((vaddr & ~0xfff) - startAddress) / PAGE_SIZE;
     ASSERT(resources.get(idx) == 1);
     return privileges[idx];
+}
+
+inline bool VAddressPool::isValidAddr(const uint32 vaddr) const 
+{
+    return vaddr >= startAddress && vaddr <= endAddress;
 }
 
 // 初始化地址池
@@ -310,7 +315,23 @@ Boundary UserVAddressPool::getBoundary(UserSegment seg) const {
     }
 }
 
-bool UserVAddressPool::isValidAddr(const uint32 vaddr) const {
-    return false;// TODO
+UserSegment UserVAddressPool::vaddr2Seg(const uint32 vaddr) const {
+    if (segBoundary.text.isValidAddr(vaddr)) {
+        return UserSegment::TEXT;
+    } else if (segBoundary.data.isValidAddr(vaddr)) {
+        return UserSegment::DATA;
+    } else if (segBoundary.bss.isValidAddr(vaddr)) {
+        return UserSegment::BSS;
+    } else if (heapPool.isValidAddr(vaddr)) {
+        return UserSegment::HEAP;
+    } else if (stackPool.isValidAddr(vaddr)) {
+        return UserSegment::STACK;
+    } else if (TLSPool.isValidAddr(vaddr)) {
+        return UserSegment::TLS;
+    } else if (mmapPool.isValidAddr(vaddr)) {
+        return UserSegment::MMAP;
+    } else {
+        return UserSegment::EMPTY;
+    }
 }
 

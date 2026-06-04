@@ -83,18 +83,20 @@ public:
     // 释放若干页的空间
     void release(const uint32 address, const int amount);
     
-    VPageFlags getVPageFlag(const uint32 vaddr);
+    VPageFlags getVPageFlag(const uint32 vaddr) const;
     
-    inline bool isValidAddr(const uint32 vaddr) {
-        return vaddr >= startAddress && vaddr <= endAddress;
-    }
+    inline bool isValidAddr(const uint32 vaddr) const;
 };
 
 // 左闭右闭
 struct Boundary {
     uint32 start, end;
+    inline bool isValidAddr(uint32 addr) const {
+        return addr >= start && addr <= end;
+    }
 };
 
+// 左闭右闭
 struct SegBoundary {
     Boundary text, data, bss;
 };
@@ -134,7 +136,7 @@ public:
 
     Boundary getBoundary(UserSegment seg) const;
 
-    bool isValidAddr(const uint32 vaddr) const;
+    UserSegment vaddr2Seg(const uint32 vaddr) const;
 
 };
 

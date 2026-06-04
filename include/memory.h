@@ -41,8 +41,8 @@ public:
     int allocatePages(enum AddressPoolType type, const int count, const VPageFlags flag, UserSegment userSegment = UserSegment::EMPTY);
 
     // 页内存懒分配
-    int allocatePagesLazy(enum AddressPoolType type, const VPageFlags flag, UserSegment userSegment = UserSegment::EMPTY);
-
+    int allocatePagesLazy(enum AddressPoolType type, const int count, const VPageFlags flag, UserSegment userSegment = UserSegment::EMPTY);
+    
     // 虚拟页分配
     int allocateVirtualPages(enum AddressPoolType type, const int count, const VPageFlags flag, UserSegment userSegment = UserSegment::EMPTY);
 

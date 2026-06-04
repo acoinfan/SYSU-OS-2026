@@ -382,7 +382,7 @@ int MemoryManager::allocatePages(enum AddressPoolType type, const int count, con
         if (!flag)
         {
             // 前i个页表已经指定了物理页
-            releasePages(type, virtualAddress, i);
+            releasePages(type, virtualAddress, i, userSegment);
             // 剩余的页表未指定物理页
             releaseVirtualPages(type, virtualAddress + i * PAGE_SIZE, count - i, userSegment);
             return 0;
@@ -413,10 +413,6 @@ bool MemoryManager::connectPhysicalVirtualPage(const int virtualAddress, const i
 {
     // 计算虚拟地址对应的页目录项和页表项
     int *pde = (int *)toPDE(virtualAddress);
-    // if (virtualAddress >= 0x100000 && virtualAddress < 0x200000) {
-    //     printf("[MAP-BEFORE] v=0x%x pde@0x%x=0x%x pte@0x%x=0x%x new_pa=0x%x\n",
-    //            virtualAddress, pde, *pde, pte, *pte, physicalPageAddress);
-    // }
     int *pte = (int *)toPTE(virtualAddress);
     // 页目录项无对应的页表，先分配一个页表
     if(!(*pde & 0x00000001)) 
@@ -441,21 +437,18 @@ bool MemoryManager::connectPhysicalVirtualPage(const int virtualAddress, const i
     // 使页表项指向物理页
     int old = *pte;
     PTEFlags pteFlag;
+    UserSegment userSegment;
     // 属于 Kernel VAPool
     if (memoryManager.kernelVirtual.isValidAddr(virtualAddress)) {
         pteFlag = vPageFlags2PTE(memoryManager.kernelVirtual.getVPageFlag(virtualAddress));
-    // TODO: User VAPool
-    } else if (1) {
-        asm_halt();
+    // 属于 User VAPool
+    } else if ((userSegment = (programManager.running->userVirtual.vaddr2Seg(virtualAddress))) != UserSegment::EMPTY) {
+        pteFlag = vPageFlags2PTE(programManager.running->userVirtual.getVPageFlag(userSegment, virtualAddress));
     // 非法地址
     } else { 
         ASSERT(0);
     }
     *pte = physicalPageAddress | pteFlag | PTE_PRESENT;
-
-    // if (virtualAddress >= 0x100000 && virtualAddress < 0x200000) {
-    //     printf("[MAP-AFTER ] v=0x%x pte old=0x%x new=0x%x\n", virtualAddress, old, *pte);
-    // }
 
     // 绑定rmap
     int owner = programManager.running ? programManager.running->pid : 0;
@@ -537,35 +530,40 @@ void MemoryManager::releaseVirtualPages(enum AddressPoolType type, const int vad
     }
 }
 
-int MemoryManager::allocatePagesLazy(enum AddressPoolType type, const VPageFlags flag, UserSegment userSegment) {
-    int vaddr = allocateVirtualPages(type, 1, flag, userSegment);
-    if (vaddr == -1) return -1;
+int MemoryManager::allocatePagesLazy(enum AddressPoolType type, const int count, const VPageFlags flag, UserSegment userSegment) {
+    int start = allocateVirtualPages(type, count, flag, userSegment);
+    if (!start) return 0;
 
-    // 计算虚拟地址对应的页目录项和页表项
-    int *pde = (int *)toPDE(vaddr);
-
-    int *pte = (int *)toPTE(vaddr);
-    // 页目录项无对应的页表，先分配一个页表
-    if(!(*pde & 0x00000001)) 
-    {
-        // 从内核物理地址空间中分配一个页表
-        int page = allocatePhysicalPages(AddressPoolType::KERNEL, 1);
-        if (!page)
-            return false;
-        else {
-            pageinfos[PA2PGI(page)].clear();
-            pageinfos[PA2PGI(page)].incRef();
-            pageinfos[PA2PGI(page)].setFlag(PG_KERNEL | PG_LOCKED);
-        }
-        // 使页目录项指向页表, 同时设置权限位
-
-        *pde = page | 0x7;
-        // 初始化页表
-        char *pagePtr = (char *)(((int)pte) & 0xfffff000);
-        memset(pagePtr, 0, PAGE_SIZE);
-    }    
-    *pte = PTE_LAZY | PTE_WRITABLE;
-    return vaddr;
+    int vaddr = start;
+    for (int i = 0; i < count; i++, vaddr += PAGE_SIZE) {
+        // 计算虚拟地址对应的页目录项和页表项
+        int *pde = (int *)toPDE(vaddr);
+    
+        int *pte = (int *)toPTE(vaddr);
+        // 页目录项无对应的页表，先分配一个页表
+        if(!(*pde & 0x00000001)) 
+        {
+            // 从内核物理地址空间中分配一个页表
+            int page = allocatePhysicalPages(AddressPoolType::KERNEL, 1);
+            if (!page) {
+                // 失败则回滚前面的
+                releasePages(type, start, i, userSegment);
+                releaseVirtualPages(type, start + i * PAGE_SIZE, count - i, userSegment);
+            } else {
+                pageinfos[PA2PGI(page)].clear();
+                pageinfos[PA2PGI(page)].incRef();
+                pageinfos[PA2PGI(page)].setFlag(PG_KERNEL | PG_LOCKED);
+            }
+            // 使页目录项指向页表, 同时设置权限位
+    
+            *pde = page | 0x7;
+            // 初始化页表
+            char *pagePtr = (char *)(((int)pte) & 0xfffff000);
+            memset(pagePtr, 0, PAGE_SIZE);
+        }    
+        *pte = PTE_LAZY | PTE_WRITABLE;
+    }
+    return start;
 }
 
 VictimInfo MemoryManager::findVictim(enum AddressPoolType type) {
