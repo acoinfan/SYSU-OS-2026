@@ -19,6 +19,7 @@ ASM_SOURCE += $(wildcard $(SRCDIR)/utils/*.asm)
 ASM_OBJ += $(ASM_SOURCE:$(SRCDIR)/utils/%.asm=%.o)
 OBJ += $(CXX_OBJ)
 OBJ += $(ASM_OBJ)
+
 build : mbr.bin bootloader.bin kernel.bin kernel.o
 	dd if=mbr.bin of=$(RUNDIR)/hd.img bs=512 count=1 seek=0 conv=notrunc
 	dd if=bootloader.bin of=$(RUNDIR)/hd.img bs=512 count=5 seek=1 conv=notrunc

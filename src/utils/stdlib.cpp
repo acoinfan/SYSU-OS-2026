@@ -41,12 +41,13 @@ void itos(char *numStr, uint32 num, uint32 mod) {
     numStr[length] = '\0';
 }
 
-void memset(void *memory, char value, int length)
+void* memset(void *memory, char value, int length)
 {
     for (int i = 0; i < length; ++i)
     {
         ((char *)memory)[i] = value;
     }
+    return memory;
 }
 
 int ceil(const int dividend, const int divisor) {
@@ -67,6 +68,14 @@ void *memcpy(void *str1, const void *str2, uint32 n) {
         }
     }
     return str1;
+}
+
+unsigned strlen(const char* const ptr) {
+    unsigned size = 0;
+    while (ptr[size]) {
+        size++;
+    }
+    return size;
 }
 
 

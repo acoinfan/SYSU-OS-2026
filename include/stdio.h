@@ -32,6 +32,6 @@ private:
     void rollUp();
 };
 
-int printf(const char *const fmt, ...);
+extern int printf(const char *const fmt, ...);
 
 #endif

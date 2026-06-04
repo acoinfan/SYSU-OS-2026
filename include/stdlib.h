@@ -15,10 +15,11 @@ void swap(T &x, T &y);
 
 void itos(char *numStr, uint32 num, uint32 mod);
 // 将从memory开始的length个字节设置为value
-void memset(void *memory, char value, int length);
+void* memset(void *memory, char value, int length);
 // 上取整
 int ceil(const int dividend, const int divisor);
 
 void *memcpy(void *str1, const void *str2, uint32 n);
 
+unsigned strlen(const char* const ptr);
 #endif
