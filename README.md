@@ -65,3 +65,25 @@ PA =        [PAGE PA]      [bias]
 
 execve: execve->programManager::executeProcess(加入READY,提前分析elf,设置对应信息)
 load_process: 真正将_start位置传入,预留ProcessStartStack用于调用asm_start_process
+
+// 进程分配
+USER_VADDR_START 0x8048000 
+.text   
+.data
+.bss
+heap    1G大小
+TLS     MAX_THREAD_AMOUNT(16) * PAGE_SIZE大小
+mmap    从TLS末尾直至STACK栈顶
+stack   从STACK_TOP = 0xbfff0000 向下延伸 STACK_SIZE = 4MB (1024 PAGE)
+
+
+// COW思路
+对于新COW页，利用临时映射mapTemp()设置它的PTE项 (PTE_PRESENT | PTE_COW ) & ~PTE_RW | PAPageAddress
+并且在对应的PA的PageInfo存储的Rmap，添加一个匿名项 (有owner, 无效的pte_addr)
+然后对于原本指向它的页, 更新PTE项 PTE = (PTE | PTE_COW) & ~PTE_RW
+(记得都要flush TLB)
+
+然后handler触发时，做两轮遍历
+第一轮精确匹配，要求PTE_ADDR, OWNER完全匹配，若找到，减小ref(除非ref = 0)，复制这个PA，同时把这个条目删去
+第二轮模糊匹配，要求PTE_ADDR = 无效值, OWNER匹配，若找到，减小ref(除非ref = 0), 复制这个PA，同时把这个匿名条目删去
+否则，触发error

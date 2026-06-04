@@ -26,6 +26,8 @@ extern system_call_table
 
 global asm_page_fault_handler
 global asm_get_page_error_addr
+global asm_invlpg
+
 extern c_page_fault_handler
 
 ASM_UNHANDLED_INTERRUPT_INFO db 'Unhandled interrupt happened, halt...'
@@ -365,6 +367,12 @@ asm_system_call:
 
     ret
 
+; void asm_invlpg(void *addr);
+asm_invlpg:
+    mov eax, [esp + 4]
+    invlpg [eax]
+    ret
+    
 asm_hello_world:
     push eax
     xor eax, eax

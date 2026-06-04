@@ -24,6 +24,9 @@ struct PageInfo {
     void clearFlag(uint16 mask);
     void clear();
     void dump(void) const;
+
+    // 将所有涉及页,设置为COW状态
+    bool setCOW(void);
 };
 
 

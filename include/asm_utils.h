@@ -26,4 +26,5 @@ extern "C" void asm_start_process(int stack);
 extern "C" void asm_update_cr3(int address);
 
 extern "C" void* asm_get_page_error_addr();
+extern "C" void asm_invlpg(void *addr);
 #endif
