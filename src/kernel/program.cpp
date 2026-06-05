@@ -7,8 +7,9 @@
 #include "os_modules.h"
 
 const int PCB_SIZE = 4096;                   // PCB的大小，4KB。
-// 存放PCB的数组，预留了MAX_PROGRAM_AMOUNT个PCB的大小空间, 最后的空间留给interrupt_stack
-char PCB_SET[PCB_SIZE * MAX_PROGRAM_AMOUNT + MAX_INTERRUPT_STACK_SIZE]; 
+// 存放PCB的数组，预留了MAX_PROGRAM_AMOUNT个PCB的大小空间
+char PCB_SET[PCB_SIZE * MAX_PROGRAM_AMOUNT]; 
+ProcessStartStack PCB_INTERRUPT_STACK[MAX_PROGRAM_AMOUNT];
 bool PCB_SET_STATUS[MAX_PROGRAM_AMOUNT];     // PCB的分配状态，true表示已经分配，false表示未分配。
 
 ProgramManager::ProgramManager() {}
@@ -79,14 +80,11 @@ int ProgramManager::executeThread(ThreadFunction function, void *parameter, cons
     bool status = interruptManager.getInterruptStatus();
     interruptManager.disableInterrupt();
 
-    // 分配一页作为PCB
+    // 分配一页作为PCB, 返回清空过的PCB
     PCB *thread = allocatePCB();
 
     if (!thread)
         return -1;
-
-    // 初始化分配的页
-    memset(thread, 0, PCB_SIZE);
 
     for (int i = 0; i < MAX_PROGRAM_NAME && name[i]; ++i)
     {
@@ -185,7 +183,11 @@ PCB *ProgramManager::allocatePCB()
         if (!PCB_SET_STATUS[i])
         {
             PCB_SET_STATUS[i] = true;
-            return (PCB *)((int)PCB_SET + PCB_SIZE * i);
+            PCB* res = (PCB*)((int)PCB_SET + PCB_SIZE * i);
+            memset(res, 0, PCB_SIZE);
+            res->processStartStack = &PCB_INTERRUPT_STACK[i];
+            memset(res->processStartStack, 0, sizeof(ProcessStartStack));
+            return res;
         }
     }
 
@@ -196,6 +198,7 @@ void ProgramManager::releasePCB(PCB *program)
 {
     int index = ((int)program - (int)PCB_SET) / PCB_SIZE;
     PCB_SET_STATUS[index] = false;
+    program->processStartStack = nullptr;
 }
 
 void ProgramManager::switch_scheduler(SchedulerType _sType) 
@@ -265,6 +268,9 @@ int ProgramManager::executeProcess(const char *filename, int priority, int mode)
     // load Function
     } else if (mode == 1) {
         func2ELF(elfConf, filename);
+    } else {
+        ASSERT(0);
+        asm_halt();
     }
     dumpELFConfig(elfConf);
 
@@ -361,35 +367,31 @@ bool ProgramManager::createUserVirtualPool(PCB *process, const ELFConfig& elfCon
     }
 
     // 可变Segment分配与初始化, 注意长度-左闭右闭转化
-    VAPConfig heapConf, stackConf, mmapConf, TLSConf;
+    VAPConfigLite heapConf, stackConf, mmapConf, TLSConf;
 
     heapConf.is_static = true;
     heapConf.start_addr = elfConf.heap_begin;
     heapConf.end_addr = elfConf.heap_begin + elfConf.heap_size - 1;
     heapConf.static_privilege = (VPageFlags)(VP_RW | VP_USER);
     heapConf.length = elfConf.heap_size / PAGE_SIZE;
-    heapConf.privilegePtr = 0;
     
     stackConf.is_static = true;
     stackConf.start_addr = elfConf.stack_begin;
     stackConf.end_addr = elfConf.stack_top - 1;
     stackConf.static_privilege = (VPageFlags)(VP_RW | VP_USER);
     stackConf.length = elfConf.stack_size / PAGE_SIZE;
-    stackConf.privilegePtr = 0;
 
     mmapConf.is_static = false;
     mmapConf.start_addr = elfConf.mmap_begin;
     mmapConf.end_addr = elfConf.mmap_begin + elfConf.mmap_size - 1;
     mmapConf.static_privilege = VP_CLEAR;
     mmapConf.length = elfConf.mmap_size / PAGE_SIZE;
-    mmapConf.privilegePtr = 0;           // 需要申请
     
     TLSConf.is_static = false;
     TLSConf.start_addr = elfConf.tls_begin;
     TLSConf.end_addr = elfConf.tls_begin + elfConf.tls_size - 1;
     TLSConf.static_privilege = VP_CLEAR;
     TLSConf.length = elfConf.tls_size / PAGE_SIZE;
-    TLSConf.privilegePtr = 0;
     
     // DEBUG:
     printf("Heap Start: 0x%x, Heap End: 0x%x\nHeap Size: 0x%x, Heap Page: %d\n", heapConf.start_addr, heapConf.end_addr ,heapConf.length * PAGE_SIZE, heapConf.length);
@@ -397,170 +399,31 @@ bool ProgramManager::createUserVirtualPool(PCB *process, const ELFConfig& elfCon
     printf("mmap Start: 0x%x, mmap End: 0x%x\nmmap Size: 0x%x, mmap Page: %d\n", mmapConf.start_addr,mmapConf.end_addr, mmapConf.length * PAGE_SIZE, mmapConf.length);
     printf("Stack Start: 0x%x, Stack End: 0x%x\nStack Size: 0x%x, Stack Page: %d\n", stackConf.start_addr, stackConf.end_addr, stackConf.length * PAGE_SIZE, stackConf.length);
 
-    // 统一分配: Bitmap连续分配, privilege连续分配
-    uint32 heapBitmapSize = (heapConf.length + 7) >> 3;
-    uint32 stackBitmapSize = (stackConf.length + 7) >> 3;
-    uint32 mmapBitmapSize = (mmapConf.length + 7) >> 3;
-    uint32 TLSBitmapSize = (TLSConf.length + 7) >> 3;
-
-    printf("debug1: %d %d %d %d sum: %d\n", heapBitmapSize, stackBitmapSize, mmapBitmapSize, TLSBitmapSize, heapBitmapSize + stackBitmapSize + mmapBitmapSize + TLSBitmapSize);
-    uint32 mmapPrivilegesSize = mmapConf.length * sizeof(VPageFlags);
-    uint32 TLSPrivilegesSize = TLSConf.length * sizeof(VPageFlags);
-
-    
-    uint32 totalBitmapSize = ALIGN(PAGE_SIZE, heapBitmapSize + stackBitmapSize + mmapBitmapSize + TLSBitmapSize);
-    uint32 totalPrivilegesSize = ALIGN(PAGE_SIZE, mmapPrivilegesSize + TLSPrivilegesSize);
-    printf("debug: %d %d\n", totalBitmapSize, totalPrivilegesSize);
-    // printf("debug: %d %d %d %d\n", elfConf.heap_size, elfConf.stack_size, elfConf.mmap_size, elfConf.tls_size);
-    ASSERT(totalBitmapSize != 0);
-    ASSERT(totalPrivilegesSize != 0);
-
-    // 直接分配, 失败直接返回
-    uint32 bitmapStart = memoryManager.allocatePages(AddressPoolType::KERNEL, totalBitmapSize / PAGE_SIZE, VP_RW);
-    uint32 privilegesStart = memoryManager.allocatePages(AddressPoolType::KERNEL, totalPrivilegesSize / PAGE_SIZE, VP_RW);
-
-    printf("debug: %d %d %d %d\n", bitmapStart, totalBitmapSize / PAGE_SIZE, privilegesStart, totalPrivilegesSize / PAGE_SIZE);
-
-    if (!bitmapStart || !privilegesStart) {
-        memoryManager.releasePages(AddressPoolType::KERNEL, bitmapStart, totalBitmapSize / PAGE_SIZE);
-        memoryManager.releasePages(AddressPoolType::KERNEL, privilegesStart, totalPrivilegesSize / PAGE_SIZE);
-        return false;
-    }
-
-    // 清空原始信息
-    memset((void*)bitmapStart, 0, totalBitmapSize);
-    memset((void*)privilegesStart, 0, totalPrivilegesSize);
-
     uint16 owner = process->pid;
     // 创建资源后, 初始化
     if (mode == 0) {
         // TODO: load_from_disk();
     } else if (mode == 1) {
         // LOAD FUNC
-
-        // bitmap
-        uint32 cntPtr = bitmapStart;
-
-        heapConf.bitmap = (char*)cntPtr;
-        cntPtr += heapBitmapSize;
-
-        stackConf.bitmap = (char*)cntPtr;
-        cntPtr += stackBitmapSize;
-
-        mmapConf.bitmap = (char*)cntPtr;
-        cntPtr += mmapBitmapSize;
-
-        TLSConf.bitmap = (char*)cntPtr;
-        cntPtr += TLSBitmapSize;
-        
-        // privileges
-        mmapConf.privilegePtr = cntPtr;
-        cntPtr += mmapPrivilegesSize;
-
-        TLSConf.privilegePtr = cntPtr;
-        cntPtr += TLSPrivilegesSize;
-
         // initialize userVA
-        process->userVirtual.initialize(segBoundary, heapConf, stackConf,
+        bool initRes = process->userVirtual.initialize(segBoundary, heapConf, stackConf,
                                     mmapConf, TLSConf);
-        
+        if (!initRes) return false;
+
         // copy on write: .text
-        uint32* pgdir = (uint32*)process->pageDirectoryAddress;
-        uint32 vaddr = segBoundary.text.start;
+        uint32 pgdir = process->pageDirectoryAddress;
+        uint32 vaddrStart = segBoundary.text.start;
         // 注意,传入的是entry在内核的虚拟地址, 需要转化为物理地址
         uint32 paddrStart = memoryManager.vaddr2paddr(ALIGN(PAGE_SIZE, elfConf.entry));
-
+        uint32 total_bytes = (segBoundary.text.end + 1 - segBoundary.text.start);
+        ASSERT(total_bytes % PAGE_SIZE == 0);
+        uint32 total_pages = total_bytes / PAGE_SIZE;
         // 遍历涉及的PTE和物理页, 同时设置cow
-        for (uint32 paddr = paddrStart; vaddr < segBoundary.text.end; vaddr += PAGE_SIZE, paddr += PAGE_SIZE) {
-            uint32 pde_idx = vaddr >> 22;
-            uint32* pde = &pgdir[pde_idx];
-            uint32 tmpPTEtableptr = 0;
-
-            if (!((*pde) & 0x00000001)) {
-                // 从内核物理地址空间中分配一个页表 
-                int page = memoryManager.allocatePhysicalPages(AddressPoolType::KERNEL, 1);
-                if (!page) {
-                    // 释放已分配
-                    // 事实上,由于先设置了其他Physical Page的合法COW
-                    // 前序的分配会使得前面的COW状态不对, 这里的ref和rmap没有更新不用清除, 后续的未有操作不用清除
-                    for (uint32 paddrClear = paddrStart, vaddrClear = segBoundary.text.start; 
-                        paddrClear < paddr; paddrClear += PAGE_SIZE, vaddrClear += PAGE_SIZE) {
-                        // 关键是计算pte_paddr
-                        uint32 pde_clear_idx = vaddrClear >> 22;
-                        uint32* pde_clear = &pgdir[pde_clear_idx];
-                        uint32 pteTablePAptr_clear = *pde_clear & PTE_GET_ADDRESS;
-                        uint32 pte_clear_idx = (vaddrClear >> 12) & 0x3FF;
-                        uint32 pte_clear_paddr = pteTablePAptr_clear + (pte_clear_idx << 2);
-                        memoryManager.rmapManager.detach(&memoryManager.pageinfos[PA2PGI(paddrClear)], 
-                                                        pte_clear_paddr, 0, owner);
-                    }
-                    return false;
-                } else {
-                    memoryManager.pageinfos[PA2PGI(page)].clear();
-                    memoryManager.pageinfos[PA2PGI(page)].incRef();
-                    memoryManager.pageinfos[PA2PGI(page)].setFlag(PG_KERNEL | PG_LOCKED);
-                }
-                // 使页目录项指向页表, 同时设置权限位
-                *pde = page | 0x7;
-                // 初始化页表
-                tmpPTEtableptr = memoryManager.mapTemp(AddressPoolType::KERNEL, page);
-                ASSERT(tmpPTEtableptr);             // 严重错误, 无法恢复
-                memset((void*)((tmpPTEtableptr) & 0xfffff000), 0, PAGE_SIZE);
-                memoryManager.unmapTemp(AddressPoolType::KERNEL);
-            }
-
-            // 设置其他指向该Physical Page的PTE的COW
-            bool res = memoryManager.setCOW(&memoryManager.pageinfos[PA2PGI(paddr)]);
-
-        
-            // 设置自身的COW Part1
-            // BUG FIX~!
-            uint32 ptePABase = *pde & PTE_GET_ADDRESS;
-            uint32 pte_idx = (vaddr >> 12) & 0x3FF;
-            uint32 pte_paddr = ptePABase + (pte_idx << 2);
-            uint32 tmp = memoryManager.mapTemp(AddressPoolType::KERNEL, pte_paddr);   // tmp是临时指向pte的指针
-            // 若分配失败, 释放
-            // 事实上,由于先设置了其他Physical Page的合法COW
-            // 前序的分配会使得前面的COW状态不对, 这里的ref和rmap没有更新不用清除, 后续的未有操作不用清除
-            if (!res || !tmp) {
-                if (tmp) {
-                    memoryManager.unmapTemp(AddressPoolType::KERNEL);
-                }
-                // 清理前序分配
-                for (uint32 paddrClear = paddrStart, vaddrClear = segBoundary.text.start; 
-                    paddrClear < paddr; paddrClear += PAGE_SIZE, vaddrClear += PAGE_SIZE) {
-                    // 关键是计算pte_paddr
-                    uint32 pde_clear_idx = vaddrClear >> 22;
-                    uint32* pde_clear = &pgdir[pde_clear_idx];
-                    uint32 pteTablePAptr_clear = *pde_clear & PTE_GET_ADDRESS;
-                    uint32 pte_clear_idx = (vaddrClear >> 12) & 0x3FF;
-                    uint32 pte_clear_paddr = pteTablePAptr_clear + (pte_clear_idx << 2);
-                    memoryManager.rmapManager.detach(&memoryManager.pageinfos[PA2PGI(paddrClear)], 
-                                                    pte_clear_paddr, 0, owner);
-                }
-                return false;
-                
-            }
-            // 设置自身的COW Part2
-            
-            // 设置自身PTE
-            *(uint32*)tmp = (paddr | PTE_PRESENT | PTE_USER_ACCESS | PTE_COW) & ~PTE_WRITABLE;
-            if (tmp)
-                memoryManager.unmapTemp(AddressPoolType::KERNEL);
-            // 插入rmap, 如果当前进程=owner, 必须要传真pte-vaddr(高一点那个)
-            if (programManager.running && programManager.running->pid == owner) {
-                memoryManager.rmapManager.attach(&memoryManager.pageinfos[PA2PGI(paddr)],
-                                                pte_paddr, memoryManager.toPTE(vaddr), owner);    
-            } else {
-                memoryManager.rmapManager.attach(&memoryManager.pageinfos[PA2PGI(paddr)],
-                                                pte_paddr, PTE_ANON_VADDR, owner);                
-            }
-        }
-        return true;
-    } else if (mode == 2) {
-        // TODO: FORK LOAD
+        bool res = setupCOWPages(pgdir, paddrStart, vaddrStart, total_pages, owner);
+        return res;
     } else {
         ASSERT(0);
+        asm_halt();
     }
     // 装载
 }
@@ -646,7 +509,9 @@ void load_process(const void *entry)
     interruptManager.disableInterrupt();
 
     PCB *process = programManager.running;
-    ProcessStartStack *interruptStack = (ProcessStartStack *)programManager.interrupt_stack;
+    ProcessStartStack *interruptStack = process->processStartStack;
+        
+    // ProcessStartStack *interruptStack = (ProcessStartStack *)((int)child + PAGE_SIZE - sizeof(ProcessStartStack));
 
     interruptStack->edi = 0;
     interruptStack->esi = 0;
@@ -682,3 +547,216 @@ void load_process(const void *entry)
     asm_start_process((int)interruptStack);
 }
 
+
+bool ProgramManager::setupCOWPages(const uint32 pgdir, const uint32 paddrStart, 
+                const uint32 vaddrStart, const uint32 count, const uint16 owner) {
+    // 遍历涉及的PTE和物理页, 同时设置cow
+    // pgdir: 页目录表根在kernel中的虚拟地址
+
+    ASSERT(paddrStart % PAGE_SIZE == 0);
+    ASSERT(vaddrStart % PAGE_SIZE == 0);
+    for (uint32 i = 0; i < count; i++) {
+        uint32 paddr = paddrStart + i * PAGE_SIZE;
+        uint32 vaddr = vaddrStart + i * PAGE_SIZE;
+
+        uint32 pde_idx = vaddr >> 22;
+        uint32* pde = (uint32*)(pgdir + 4 * pde_idx);
+
+        // ptePAdir: 页表根在kernel的物理地址, pteVAdir同理
+        uint32 ptePAdir = 0, pteVAdir = 0;
+
+        if (!((*pde) & 0x00000001)) {
+            // 从内核物理地址空间中分配一个页表 
+            ptePAdir = memoryManager.allocatePhysicalPages(AddressPoolType::KERNEL, 1);
+            if (!ptePAdir) {
+                rollbackCOWSetup(pgdir, paddrStart, vaddrStart, i, owner);
+                return false;
+            } else {
+                memoryManager.pageinfos[PA2PGI(ptePAdir)].clear();
+                memoryManager.pageinfos[PA2PGI(ptePAdir)].incRef();
+                memoryManager.pageinfos[PA2PGI(ptePAdir)].setFlag(PG_KERNEL | PG_LOCKED);
+            }
+            // 使页目录项指向页表, 同时设置权限位
+            *pde = ptePAdir | 0x7;
+            // 初始化页表
+            pteVAdir = memoryManager.mapTemp(AddressPoolType::KERNEL, ptePAdir);
+            // 严重错误, 无法恢复
+            ASSERT(pteVAdir && pteVAdir % PAGE_SIZE == 0);             
+            memset((void*)pteVAdir, 0, PAGE_SIZE);
+            memoryManager.unmapTemp(AddressPoolType::KERNEL);
+        }
+
+        // 设置其他指向该Physical Page的PTE的COW
+        bool res = memoryManager.setCOW(&memoryManager.pageinfos[PA2PGI(paddr)]);
+
+        // 设置自身的COW
+        ptePAdir = *pde & PTE_GET_ADDRESS;
+        uint32 pte_idx = (vaddr >> 12) & 0x3FF;
+        // ptePA: 对应pte项在kernelPA的物理地址, pteTempVA: 基于ptePA临时分配VA
+        uint32 ptePA = ptePAdir + (pte_idx << 2);
+        uint32 pteTempVA = memoryManager.mapTemp(AddressPoolType::KERNEL, ptePA);   // tmp是临时指向pte的指针
+        
+        // 若分配失败, 释放
+        if (!res || !pteTempVA) {
+            if (pteTempVA) {
+                // 若临时map成功,需要释放
+                memoryManager.unmapTemp(AddressPoolType::KERNEL);
+            }
+            // 清理前序分配
+            rollbackCOWSetup(pgdir, paddrStart, vaddrStart, i, owner);
+            return false;
+        }
+        
+        // 设置自身PTE
+        *(uint32*)pteTempVA = (paddr | PTE_PRESENT | PTE_USER_ACCESS | PTE_COW) & ~PTE_WRITABLE;
+        memoryManager.unmapTemp(AddressPoolType::KERNEL);
+
+        // 插入rmap, 如果当前进程=owner, 必须要传真pte-vaddr(可以利用toPTE得到), 否则传入ANON
+        if (programManager.running && programManager.running->pid == owner) {
+            memoryManager.rmapManager.attach(&memoryManager.pageinfos[PA2PGI(paddr)],
+                                            ptePA, memoryManager.toPTE(vaddr), owner);    
+        } else {
+            memoryManager.rmapManager.attach(&memoryManager.pageinfos[PA2PGI(paddr)],
+                                            ptePA, PTE_ANON_VADDR, owner);                
+        }
+    }
+    return true;    
+}
+
+void ProgramManager::rollbackCOWSetup(uint32 pgdir, uint32 paddrStart, uint32 vaddrStart, 
+                                      uint32 count, uint16 owner) {
+    for (uint32 i = 0; i < count; i++) {
+        // 关键是计算pte_paddr
+        uint32 vaddr = vaddrStart + i * PAGE_SIZE;
+        uint32 paddr = paddrStart + i * PAGE_SIZE;
+
+        uint32 pde_idx = vaddr >> 22;
+        uint32* pde = (uint32*)(pgdir + 4 * pde_idx);
+        uint32 ptePAdir = *pde & PTE_GET_ADDRESS;
+        uint32 pte_idx = (vaddr >> 12) & 0x3FF;
+        uint32 ptePA = ptePAdir + (pte_idx << 2);
+        memoryManager.rmapManager.detach(&memoryManager.pageinfos[PA2PGI(paddr)], 
+                                        ptePA, 0, owner);
+    }    
+}
+
+int ProgramManager::fork()
+{
+    bool status = interruptManager.getInterruptStatus();
+    interruptManager.disableInterrupt();
+
+    // 禁止内核线程调用
+    PCB *parent = this->running;
+    if (!parent->pageDirectoryAddress)
+    {
+        interruptManager.setInterruptStatus(status);
+        return -1;
+    }
+
+    // 创建子进程
+    // 在线程创建的基础上初步创建进程的PCB
+    int pid = executeThread((ThreadFunction)load_process,
+                            (void *)0, "fork child", 0);
+    if (pid == -1)
+    {
+        interruptManager.setInterruptStatus(status);
+        return -1;
+    }
+
+    // 找到刚刚创建的PCB
+    PCB *process = ListItem2PCB(allPrograms.back(), tagInAllList);
+
+    // 创建进程的页目录表
+    process->pageDirectoryAddress = createProcessPageDirectory();
+    //printf("%x\n", process->pageDirectoryAddress);
+
+    if (!process->pageDirectoryAddress)
+    {
+        process->status = ProgramStatus::DEAD;
+        interruptManager.setInterruptStatus(status);
+        return -1;
+    }
+
+    // 复制进程的虚拟地址池
+    bool res = process->userVirtual.cloneFrom(parent->userVirtual);
+
+    ASSERT(process->userVirtual.stackPool.length);
+    if (!res)
+    {
+        process->status = ProgramStatus::DEAD;
+        interruptManager.setInterruptStatus(status);
+        return -1;
+    }
+
+    // 初始化子进程
+    PCB *child = ListItem2PCB(this->allPrograms.back(), tagInAllList);
+    bool flag = copyProcess(parent, child);
+
+    if (!flag)
+    {
+        child->status = ProgramStatus::DEAD;
+        interruptManager.setInterruptStatus(status);
+        // TODO: 记得回收Process
+        return -1;
+    }
+
+    interruptManager.setInterruptStatus(status);
+    return pid;
+}
+
+bool ProgramManager::copyProcess(PCB* parent, PCB* child) 
+{
+    ASSERT(programManager.running->pid == parent->pid);
+    // 复制PCB
+    ProcessStartStack *childpps = child->processStartStack;
+    ProcessStartStack *parentpps = parent->processStartStack;
+    memcpy(childpps, parentpps, sizeof(ProcessStartStack));
+    childpps->eax = 0;
+
+    child->stack = (int *)childpps - 7;
+    child->stack[0] = 0;
+    child->stack[1] = 0;
+    child->stack[2] = 0;
+    child->stack[3] = 0;
+    child->stack[4] = (int)asm_start_process;
+    child->stack[5] = 0;             // asm_start_process 返回地址
+    child->stack[6] = (int)childpps; // asm_start_process 参数
+
+    child->status = ProgramStatus::READY;
+    child->parentPid = parent->pid;
+    child->priority = parent->priority;
+    child->ticks = parent->ticks;
+    child->ticksPassedBy = parent->ticksPassedBy;
+    strcpy(child->name, parent->name);
+
+    // 子进程页目录表指针(虚拟地址)
+    int *childPageDir = (int *)child->pageDirectoryAddress;
+    // 父进程页目录表指针(虚拟地址)
+    int *parentPageDir = (int *)parent->pageDirectoryAddress;
+
+    //printf("%x %x\n", parent->pageDirectoryAddress, child->pageDirectoryAddress);
+
+    // 高位PDE在createPageDirectory时已处理
+    // 清除低位PDE
+    memset((void*)child->pageDirectoryAddress, 0, 768 * sizeof(uint32));
+    // 遍历User空间, 全部COW
+    uint32 pgdir = child->pageDirectoryAddress;
+    for (uint32 vaddr = USER_VADDR_START; vaddr < USER_VADDR_END; vaddr += PAGE_SIZE) {
+        // 只需要保证paddr存在
+        uint32* parentPDE = (uint32*)memoryManager.toPDE(vaddr);
+        if (!(*parentPDE & PTE_PRESENT)) continue;
+        uint32* parentPTE = (uint32*)memoryManager.toPTE(vaddr);
+        if (!(*parentPTE & PTE_PRESENT)) continue;
+
+        uint32 paddr = *parentPTE & PTE_GET_ADDRESS;
+        if (!setupCOWPages(pgdir, paddr, vaddr, 1, child->pid)) {
+            // 直接放弃, 已分配页表回收, 交给Process相关的事情去做
+            for (uint32 vaddr_clear = USER_VADDR_START; vaddr_clear < vaddr; vaddr_clear += PAGE_SIZE) {
+                uint32 paddr_clear = *((uint32*)memoryManager.toPTE(vaddr_clear)) & PTE_GET_ADDRESS;
+                rollbackCOWSetup(pgdir, paddr_clear, vaddr_clear, 1, child->pid);
+            }
+            return false;
+        }
+    }
+    return true;
+}

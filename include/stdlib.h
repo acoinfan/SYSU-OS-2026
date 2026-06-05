@@ -22,4 +22,6 @@ int ceil(const int dividend, const int divisor);
 void *memcpy(void *str1, const void *str2, uint32 n);
 
 unsigned strlen(const char* const ptr);
+
+char *strcpy(char *dest, const char *src);
 #endif

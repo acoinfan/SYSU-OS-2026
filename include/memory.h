@@ -45,15 +45,15 @@ public:
 
     // 页内存分配
     // 成功，返回起始地址；失败，返回0
-    int allocatePages(enum AddressPoolType type, const int count, const VPageFlags flag, UserSegment userSegment = UserSegment::EMPTY);
+    int allocatePages(enum AddressPoolType type, const int count, const VPageFlags flag, UserSegment userSegment = UserSegment::EMPTY, bool reverse = false);
 
     // 页内存懒分配
     // 成功，返回起始地址；失败，返回0
-    int allocatePagesLazy(enum AddressPoolType type, const int count, const VPageFlags flag, UserSegment userSegment = UserSegment::EMPTY);
+    int allocatePagesLazy(enum AddressPoolType type, const int count, const VPageFlags flag, UserSegment userSegment = UserSegment::EMPTY, bool reverse = false);
     
     // 虚拟页分配
     // 成功，返回起始地址；失败，返回0
-    int allocateVirtualPages(enum AddressPoolType type, const int count, const VPageFlags flag, UserSegment userSegment = UserSegment::EMPTY);
+    int allocateVirtualPages(enum AddressPoolType type, const int count, const VPageFlags flag, UserSegment userSegment = UserSegment::EMPTY, bool reverse = false);
 
     // 建立虚拟页到物理页的联系
     bool connectPhysicalVirtualPage(const int virtualAddress, const int physicalPageAddress);

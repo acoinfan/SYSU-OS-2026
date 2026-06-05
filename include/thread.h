@@ -8,6 +8,29 @@
 
 typedef void (*ThreadFunction)(void *);
 
+struct ProcessStartStack
+{
+    int edi;
+    int esi;
+    int ebp;
+    int esp_dummy;
+    int ebx;
+    int edx;
+    int ecx;
+    int eax;
+    
+    int gs;
+    int fs;
+    int es;
+    int ds;
+
+    int eip;
+    int cs;
+    int eflags;
+    int esp;
+    int ss;
+};
+
 struct PCB
 {
     int *stack;                      // 栈指针，用于调度时保存esp
@@ -20,8 +43,11 @@ struct PCB
     ListItem tagInGeneralList;       // 线程队列标识
     ListItem tagInAllList;           // 线程队列标识
 
-    UserVAddressPool userVirtual;    // 用户程序虚拟地址池
     int pageDirectoryAddress;        // 页目录表地址
+    UserVAddressPool userVirtual;    // 用户程序虚拟地址池
+    ProcessStartStack* processStartStack;          // 进程起始栈
+    int parentPid;            // 父进程pid
+    int retValue;             // 返回值
 };
 
 #endif

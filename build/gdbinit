@@ -4,7 +4,7 @@ set disassembly-flavor intel
 set pagination off
 
 # 停在内核入口后再开监控更稳妥
-break setup_kernel
+# break setup_kernel
 # b out_of_memory
 # b c_page_fault_handler
 # b first_thread
@@ -15,7 +15,8 @@ break setup_kernel
 # b MemoryManager::setCOW
 # b load_process
 # b ProgramManager::schedule
-b asm_start_process
-b asm_sys_call
+# b address_pool.cpp:335
+# c
+b ProgramManager::fork
 c
 layout src

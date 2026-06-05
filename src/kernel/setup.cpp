@@ -90,10 +90,11 @@ void first_thread(void *arg)
 
 void idle_thread(void* arg) {
     printf("start process\n");
-    programManager.executeProcess((const char *)COW_writer, 1, 1);
-    programManager.executeProcess((const char *)COW_reader, 1, 1);
+    programManager.executeProcess((const char *)fork_test, 1, 1);
+    // programManager.executeProcess((const char *)COW_writer, 1, 1);
+    // programManager.executeProcess((const char *)COW_reader, 1, 1);
     printf("Load Done\n");
-    ASSERT(0);
+    asm_halt();
     // int pid = programManager.executeThread(test_lazy_alloc_thread, nullptr, "test_lazy_alloc_thread", 1);
     // if (pid == -1)
     // {

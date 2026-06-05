@@ -78,6 +78,14 @@ unsigned strlen(const char* const ptr) {
     return size;
 }
 
+char *strcpy(char *dest, const char *src) {
+    char *ret = dest;
+
+    while ((*dest++ = *src++))
+        ;
+
+    return ret;
+}
 
 extern "C" {
 

@@ -105,5 +105,13 @@ enum UserSegment : unsigned char {
     EMPTY = 0xff 
 };
 
-
+enum SyscallType : uint8 {
+    SYSCALL_0 = 0,
+    WRITE,
+    FORK,
+    EXIT,
+    WAIT,
+    MOVE_CURSOR,
+    PTE_DUMP
+};
 #endif

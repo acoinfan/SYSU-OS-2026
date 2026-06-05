@@ -28,7 +28,16 @@ struct VAddressPoolConfig {
     bool is_static = false; // 是否静态
 };
 
+struct VAddressPoolConfigLite {
+    uint32 length;          // 管理的总页数
+    uint32 start_addr;      // 管理的起始地址(左闭右闭)
+    uint32 end_addr;        // 管理的终止地址(左闭右闭)
+    VPageFlags static_privilege = (VPageFlags)(VP_RW|VP_USER);  // 静态privilege
+    bool is_static = false; // 是否静态
+};
+
 typedef VAddressPoolConfig VAPConfig;
+typedef VAddressPoolConfigLite VAPConfigLite;
 
 inline PTEFlags vPageFlags2PTE(VPageFlags flags)
 {
@@ -75,6 +84,7 @@ public:
         const VPageFlags static_privilege=(VPageFlags)(VP_RW|VP_USER), bool isStatic=false);
     
     void initialize(const VAddressPoolConfig& config);
+    void initialize(const VAddressPoolConfigLite& config, char* bitmap, const uint32 privileges);
     void initialize(const VAddressPool& parent, char *bitmap, const uint32 privileges);
 
     // 从地址池中分配count个连续页，成功则返回第一个页的地址，失败则返回-1
@@ -101,13 +111,6 @@ struct SegBoundary {
     Boundary text, data, bss;
 };
 
-struct VPoolBuffers {
-    uint32 heapBitmap, heapPrivileges = 0;
-    uint32 stackBitmap, stackPrivileges = 0;
-    uint32 mmapBitmap, mmapPrivileges;
-    uint32 TLSBitmap, TLSPrivileges;
-};
-
 class UserVAddressPool
 {
 public:
@@ -116,17 +119,28 @@ public:
     VAddressPool stackPool;
     VAddressPool mmapPool; 
     VAddressPool TLSPool;
+    uint32 bitmapStart, privStart;
+    uint32 bitmapPage, privPage;
     bool isInitialized = false;
 public:
     UserVAddressPool() {}
 
-    // 初始化地址池
-    void initialize(const struct SegBoundary& segBoundary, 
-                    const VAPConfig& heapConf, const VAPConfig& stackConf,
-                    const VAPConfig& mmapConf, const VAPConfig& TLSConf);
+    // [不建议使用]初始化地址池, 需要自己分配bitmap和privileges
+    // void initialize(const struct SegBoundary& segBoundary, 
+    //                 const VAPConfig& heapConf, const VAPConfig& stackConf,
+    //                 const VAPConfig& mmapConf, const VAPConfig& TLSConf);
     
-    // fork初始化地址池
-    bool cloneFrom(const UserVAddressPool& parent, const VPoolBuffers& vpoolBuf);
+    
+    // [RAII]初始化地址池, 无需自己分配bitmap和privileges
+    bool initialize(const struct SegBoundary& segBoundary, 
+                    const VAPConfigLite& heapConf, const VAPConfigLite& stackConf,
+                    const VAPConfigLite& mmapConf, const VAPConfigLite& TLSConf);
+
+
+    // [RAII]fork初始化地址池, 无需分配Bitmap和privileges
+    bool cloneFrom(const UserVAddressPool& parent);
+    
+    void destroy();
 
     int allocate(UserSegment seg, const uint32 count, VPageFlags privilege, bool reverse = false);
 

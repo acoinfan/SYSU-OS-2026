@@ -350,10 +350,10 @@ int MemoryManager::getTotalMemory()
     return this->totalMemory;
 }
 
-int MemoryManager::allocatePages(enum AddressPoolType type, const int count, const VPageFlags vFlag, UserSegment userSegment)
+int MemoryManager::allocatePages(enum AddressPoolType type, const int count, const VPageFlags vFlag, UserSegment userSegment, bool reverse)
 {
     // 第一步：从虚拟地址池中分配若干虚拟页
-    int virtualAddress = allocateVirtualPages(type, count, vFlag, userSegment);
+    int virtualAddress = allocateVirtualPages(type, count, vFlag, userSegment, reverse);
 
     if (!virtualAddress)
     {
@@ -395,7 +395,7 @@ int MemoryManager::allocatePages(enum AddressPoolType type, const int count, con
     return virtualAddress;
 }
 
-int MemoryManager::allocateVirtualPages(enum AddressPoolType type, const int count, const VPageFlags vFlag, UserSegment userSegment)
+int MemoryManager::allocateVirtualPages(enum AddressPoolType type, const int count, const VPageFlags vFlag, UserSegment userSegment, bool reverse)
 {
     int start = -1;
 
@@ -461,8 +461,8 @@ bool MemoryManager::connectPhysicalVirtualPage(const int virtualAddress, const i
     uint32 pte_pa = toPTEpa(virtualAddress);
     ASSERT(rmapManager.attach(&pageinfos[PA2PGI(physicalPageAddress)], pte_pa, (uint32)pte, owner) != -1);
     // DEBUG:
-    printf("bind VA=0x%x to PA=0x%x\n", virtualAddress, physicalPageAddress);
-    pageinfos[PA2PGI(physicalPageAddress)].dump();
+    // printf("bind VA=0x%x to PA=0x%x\n", virtualAddress, physicalPageAddress);
+    // pageinfos[PA2PGI(physicalPageAddress)].dump();
     return true;
 }
 
@@ -552,8 +552,8 @@ void MemoryManager::releaseVirtualPages(enum AddressPoolType type, const int vad
     }
 }
 
-int MemoryManager::allocatePagesLazy(enum AddressPoolType type, const int count, const VPageFlags flag, UserSegment userSegment) {
-    int start = allocateVirtualPages(type, count, flag, userSegment);
+int MemoryManager::allocatePagesLazy(enum AddressPoolType type, const int count, const VPageFlags flag, UserSegment userSegment, bool reverse) {
+    int start = allocateVirtualPages(type, count, flag, userSegment, reverse);
     if (!start) return 0;
 
     int vaddr = start;

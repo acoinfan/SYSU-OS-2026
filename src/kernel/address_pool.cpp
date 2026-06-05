@@ -2,12 +2,15 @@
 #include "os_modules.h"
 #include "assert.h"
 #include "stdlib.h"
+#include "syscall.h"
+#include "asm_utils.h"
 
 // 初始化地址池
 void VAddressPool::initialize(char *bitmap, const int length, const uint32 startAddress,
                                  const uint32 endAddress, const uint32 privileges,
                                  const VPageFlags static_privilege, bool isStatic)
 {
+    ASSERT(length);
     this->length = length;
     resources.initialize(bitmap, length);
     this->startAddress = startAddress;
@@ -24,12 +27,20 @@ void VAddressPool::initialize(char *bitmap, const int length, const uint32 start
 }
 
 void VAddressPool::initialize(const VAddressPoolConfig& config) {
+    ASSERT(config.length);
     initialize(config.bitmap, config.length, config.start_addr, config.end_addr,
                 config.privilegePtr, config.static_privilege, config.is_static);
 }
 
+void VAddressPool::initialize(const VAddressPoolConfigLite& config, char* bitmap, const uint32 privileges) {
+    ASSERT(config.length);
+    initialize(bitmap, config.length, config.start_addr, config.end_addr,
+                privileges, config.static_privilege, config.is_static);
+}
+
 void VAddressPool::initialize(const VAddressPool& parent, char *bitmap, const uint32 privileges) {
     this->length = parent.length;
+    ASSERT(this->length);
     resources.initialize(bitmap, parent.length);
 
     this->startAddress = parent.startAddress;
@@ -175,51 +186,175 @@ VictimInfo PAddressPool::findVictim(uint32 search_length, uint32 round)
     return {0, 0};
 }
 
-void UserVAddressPool::initialize(const struct SegBoundary& segBoundary, 
-                        const VAPConfig& heapConf, const VAPConfig& stackConf,
-                        const VAPConfig& mmapConf, const VAPConfig& TLSConf) {
+// void UserVAddressPool::initialize(const struct SegBoundary& segBoundary, 
+//                         const VAPConfig& heapConf, const VAPConfig& stackConf,
+//                         const VAPConfig& mmapConf, const VAPConfig& TLSConf) {
+//     ASSERT(!this->isInitialized);
+//     this->segBoundary = segBoundary;
+//     this->heapPool.initialize(heapConf);
+//     this->stackPool.initialize(stackConf);
+//     this->mmapPool.initialize(mmapConf);
+//     this->TLSPool.initialize(TLSConf);
+//     this->isInitialized = true;
+//     ASSERT(heapPool.isStatic && stackPool.isStatic);
+//     ASSERT(heapPool.getVPageFlag(0) == (VP_RW|VP_USER));
+//     ASSERT(stackPool.getVPageFlag(0) == (VP_RW|VP_USER));
+// }
+
+bool UserVAddressPool::initialize(const struct SegBoundary& segBoundary, 
+                        const VAPConfigLite& heapConf, const VAPConfigLite& stackConf,
+                        const VAPConfigLite& mmapConf, const VAPConfigLite& TLSConf) {
     ASSERT(!this->isInitialized);
+
+    uint32 heapBitmapBytes = ceil(heapConf.length, 8);
+    uint32 stackBitmapBytes = ceil(stackConf.length, 8);
+    uint32 tlsBitmapBytes = ceil(TLSConf.length, 8);
+    uint32 mmapBitmapBytes = ceil(mmapConf.length, 8);
+    uint32 tlsPrivBytes = TLSConf.length * sizeof(VPageFlags);
+    uint32 mmapPrivBytes = mmapConf.length * sizeof(VPageFlags);
+
+    uint32 totalBitmapBytes = ALIGN(PAGE_SIZE, heapBitmapBytes + stackBitmapBytes + tlsBitmapBytes + mmapBitmapBytes);
+    uint32 totalPrivBytes = ALIGN(PAGE_SIZE, tlsPrivBytes + mmapPrivBytes);
+    
+    // try alloc
+    uint32 bitmapStart = memoryManager.allocatePages(AddressPoolType::KERNEL, totalBitmapBytes / PAGE_SIZE, VP_RW);
+    uint32 privStart = memoryManager.allocatePages(AddressPoolType::KERNEL, totalPrivBytes / PAGE_SIZE, VP_RW);
+
+    if (!bitmapStart || !privStart) {
+        memoryManager.releasePages(AddressPoolType::KERNEL, bitmapStart, totalBitmapBytes / PAGE_SIZE);
+        memoryManager.releasePages(AddressPoolType::KERNEL, privStart, totalPrivBytes / PAGE_SIZE);
+        return false;
+    }
+
+    // Clear Space
+    memset((void*)bitmapStart, 0, totalBitmapBytes);
+    memset((void*)privStart, 0, totalPrivBytes);
+    
+    // Calculatie Ptr
+    uint32 cnt = bitmapStart;
+    uint32 heapBitmapStart = cnt;
+    cnt += heapBitmapBytes;
+
+    uint32 stackBitmapStart = cnt;
+    cnt += stackBitmapBytes;
+
+    uint32 tlsBitmapStart = cnt;
+    cnt += tlsBitmapBytes;
+
+    uint32 mmapBitmapStart = cnt;
+    cnt += mmapBitmapBytes;
+
+    cnt = privStart;
+    uint32 tlsPrivStart = cnt;
+    cnt += tlsPrivBytes;
+
+    uint32 mmapPrivStart = cnt;
+    cnt += mmapPrivBytes;
+
+    // initialize
     this->segBoundary = segBoundary;
-    this->heapPool.initialize(heapConf);
-    this->stackPool.initialize(stackConf);
-    this->mmapPool.initialize(mmapConf);
-    this->TLSPool.initialize(TLSConf);
+    this->heapPool.initialize(heapConf, (char*)heapBitmapStart, 0U);
+    this->stackPool.initialize(stackConf, (char*)stackBitmapStart, 0U);
+    this->mmapPool.initialize(mmapConf, (char*)mmapBitmapStart, mmapPrivStart);
+    this->TLSPool.initialize(TLSConf, (char*)tlsBitmapStart, tlsPrivStart);
+    this->bitmapStart = bitmapStart;
+    this->bitmapPage = totalBitmapBytes / PAGE_SIZE;
+    this->privStart = privStart;
+    this->privPage = totalPrivBytes / PAGE_SIZE;
     this->isInitialized = true;
+
     ASSERT(heapPool.isStatic && stackPool.isStatic);
     ASSERT(heapPool.getVPageFlag(0) == (VP_RW|VP_USER));
     ASSERT(stackPool.getVPageFlag(0) == (VP_RW|VP_USER));
+    return true;
 }
 
-bool UserVAddressPool::cloneFrom(const UserVAddressPool& parent, const VPoolBuffers& vpoolBuf) {
+bool UserVAddressPool::cloneFrom(const UserVAddressPool& parent) {
     ASSERT(!this->isInitialized);
     if (!parent.isInitialized) return false;
+    
+    // Calculate Size
+    uint32 heapBitmapBytes = ceil(parent.heapPool.length, 8);
+    uint32 stackBitmapBytes = ceil(parent.stackPool.length, 8);
+    uint32 tlsBitmapBytes  = ceil(parent.TLSPool.length, 8);
+    uint32 mmapBitmapBytes = ceil(parent.mmapPool.length, 8);
+    uint32 tlsPrivBytes = parent.TLSPool.length * sizeof(VPageFlags);
+    uint32 mmapPrivBytes = parent.mmapPool.length * sizeof(VPageFlags);
+    
+    uint32 totalBitmapBytes = ALIGN(PAGE_SIZE, heapBitmapBytes + stackBitmapBytes + tlsBitmapBytes + mmapBitmapBytes);
+    uint32 totalPrivBytes = ALIGN(PAGE_SIZE, tlsPrivBytes + mmapPrivBytes);
+
+    // try alloc
+    uint32 bitmapStart = memoryManager.allocatePages(AddressPoolType::KERNEL, totalBitmapBytes / PAGE_SIZE, VP_RW);
+    uint32 privStart = memoryManager.allocatePages(AddressPoolType::KERNEL, totalPrivBytes / PAGE_SIZE, VP_RW);
+
+    if (!bitmapStart || !privStart) {
+        memoryManager.releasePages(AddressPoolType::KERNEL, bitmapStart, totalBitmapBytes / PAGE_SIZE);
+        memoryManager.releasePages(AddressPoolType::KERNEL, privStart, totalPrivBytes / PAGE_SIZE);
+        return false;
+    }
+
+    // Calculatie Ptr
+    uint32 cnt = bitmapStart;
+    uint32 heapBitmapStart = cnt;
+    cnt += heapBitmapBytes;
+
+    uint32 stackBitmapStart = cnt;
+    cnt += stackBitmapBytes;
+
+    uint32 tlsBitmapStart = cnt;
+    cnt += tlsBitmapBytes;
+
+    uint32 mmapBitmapStart = cnt;
+    cnt += mmapBitmapBytes;
+
+    cnt = privStart;
+    uint32 tlsPrivStart = cnt;
+    cnt += tlsPrivBytes;
+
+    uint32 mmapPrivStart = cnt;
+    cnt += mmapPrivBytes;
 
     // Copy Parameters
     this->segBoundary = parent.segBoundary;
-    this->heapPool.initialize(parent.heapPool, (char*)vpoolBuf.heapBitmap, 0);
-    this->stackPool.initialize(parent.stackPool, (char*)vpoolBuf.stackBitmap, 0);
-    this->TLSPool.initialize(parent.TLSPool, (char*)vpoolBuf.TLSBitmap, vpoolBuf.TLSPrivileges);
-    this->mmapPool.initialize(parent.mmapPool, (char*)vpoolBuf.mmapBitmap, vpoolBuf.mmapPrivileges);
+    this->heapPool.initialize(parent.heapPool, (char*)heapBitmapStart, 0);
+    this->stackPool.initialize(parent.stackPool, (char*)stackBitmapStart, 0);
+    this->TLSPool.initialize(parent.TLSPool, (char*)tlsBitmapStart, tlsPrivStart);
+    this->mmapPool.initialize(parent.mmapPool, (char*)mmapBitmapStart, mmapPrivStart);
+    this->bitmapStart = bitmapStart;
+    this->bitmapPage = totalBitmapBytes / PAGE_SIZE;
+    this->privStart = privStart;
+    this->privPage = totalPrivBytes / PAGE_SIZE;
+    
     ASSERT(heapPool.isStatic && stackPool.isStatic);
     ASSERT(heapPool.getVPageFlag(0) == (VP_RW|VP_USER));
     ASSERT(stackPool.getVPageFlag(0) == (VP_RW|VP_USER));
     
+    ASSERT(this->stackPool.length);
     // DeepCopy BitMap, VPageFlags(Only TLS & mmap)
-    uint32 heapLength = this->heapPool.endAddress - this->heapPool.startAddress + 1;
-    uint32 stackLength = this->stackPool.endAddress - this->stackPool.startAddress + 1;
-    uint32 TLSLength = this->TLSPool.endAddress - this->TLSPool.startAddress + 1;
-    uint32 mmapLength = this->mmapPool.endAddress - this->mmapPool.startAddress + 1;
+    uint32 heapLength = this->heapPool.length;
+    uint32 stackLength = this->stackPool.length;
+    uint32 TLSLength = this->TLSPool.length;
+    uint32 mmapLength = this->mmapPool.length;
+    dump_pte(heapBitmapStart);
 
     // Bitmap memcpy
-    memcpy((void*)vpoolBuf.heapBitmap, parent.heapPool.resources.bitmap, ceil(heapLength, 8));
-    memcpy((void*)vpoolBuf.stackBitmap, parent.stackPool.resources.bitmap, ceil(stackLength, 8));
-    memcpy((void*)vpoolBuf.TLSBitmap, parent.TLSPool.resources.bitmap, ceil(TLSLength, 8));
-    memcpy((void*)vpoolBuf.mmapBitmap, parent.mmapPool.resources.bitmap, ceil(mmapLength, 8));
+    memcpy((void*)heapBitmapStart, parent.heapPool.resources.bitmap, heapBitmapBytes);
+    memcpy((void*)stackBitmapStart, parent.stackPool.resources.bitmap, stackBitmapBytes);
+    memcpy((void*)tlsBitmapStart, parent.TLSPool.resources.bitmap, tlsBitmapBytes);
+    memcpy((void*)mmapBitmapStart, parent.mmapPool.resources.bitmap, mmapBitmapBytes);
 
     // Privileges memcpy
-    memcpy((void*)vpoolBuf.TLSPrivileges, parent.TLSPool.privileges, TLSLength * sizeof(VPageFlags));
-    memcpy((void*)vpoolBuf.mmapPrivileges, parent.mmapPool.privileges, mmapLength * sizeof(VPageFlags));
+    memcpy((void*)tlsPrivStart, parent.TLSPool.privileges, tlsPrivBytes);
+    memcpy((void*)mmapPrivStart, parent.mmapPool.privileges, mmapPrivBytes);
+    this->isInitialized = true;
+    ASSERT(this->stackPool.length);
     return true;
+}
+
+void UserVAddressPool::destroy() {
+    memoryManager.releasePages(AddressPoolType::KERNEL, bitmapStart, bitmapPage);
+    memoryManager.releasePages(AddressPoolType::KERNEL, privStart, privPage);
 }
 
 // 成功则返回第一个页的地址，失败则返回-1

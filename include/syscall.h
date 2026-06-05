@@ -3,6 +3,7 @@
 
 #include "os_constant.h"
 #include "os_type.h"
+#include "enum.h"
 
 class SystemService
 {
@@ -16,9 +17,34 @@ public:
 // 第0个系统调用
 int syscall_0(int first, int second, int third, int forth, int fifth);
 
-// 1
+// 暂时未启用
 int sys_write(int fd, const char* buf, int len);
 
-// 2
-int sys_dump_pte(uint32 vaddr);
+// 6
+int dump_pte(uint32 vaddr);
+int syscall_dump_pte(uint32 vaddr);
+
+// 第0个系统调用
+int syscall_0(int first, int second, int third, int forth, int fifth);
+
+// 第1个系统调用, write
+int write(const char *str);
+int syscall_write(const char *str);
+
+// 第2个系统调用, fork
+int fork();
+int syscall_fork();
+
+// 第3个系统调用, exit
+// void exit(int ret);
+// void syscall_exit(int ret);
+
+// 第4个系统调用, wait
+// int wait(int *retval);
+// int syscall_wait(int *retval);
+
+// 第5个系统调用, move cursor
+void move_cursor(int i, int j);
+void syscall_move_cursor(int i, int j);
+
 #endif

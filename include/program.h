@@ -6,28 +6,6 @@
 #include "scheduler.h"
 
 // #define ListItem2PCB(ADDRESS, LIST_ITEM) ((PCB *)((int)(ADDRESS) - (int)&((PCB *)0)->LIST_ITEM))
-struct ProcessStartStack
-{
-    int edi;
-    int esi;
-    int ebp;
-    int esp_dummy;
-    int ebx;
-    int edx;
-    int ecx;
-    int eax;
-    
-    int gs;
-    int fs;
-    int es;
-    int ds;
-
-    int eip;
-    int cs;
-    int eflags;
-    int esp;
-    int ss;
-};
 
 struct ElfSegment {
     UserSegment userSegment; // 对应的段
@@ -132,6 +110,22 @@ public:
     
     //
     void MESA_WakeUp(PCB *program);
+
+    // fork();
+    int fork();
+
+    // execve();
+    int execve();
+
+private:
+    // 用于COW过程中, 把paddrStart对应的内容, 复制到owner页表下对应地址为vaddrStart的地方, 总计复制count页
+    bool setupCOWPages(const uint32 pgdir, const uint32 paddrStart, const uint32 vaddrStart, 
+                       const uint32 count, const uint16 owner);
+    // 用于COW过程中, 连续复制页的清除, 释放从idx 0到count - 1总计count个
+    void rollbackCOWSetup(uint32 pgdir, uint32 paddrStart, uint32 vaddrStart, uint32 count, uint16 owner);
+    
+    // COW复制进程
+    bool copyProcess(PCB* parent, PCB* child);
 };
 
 void program_exit();
