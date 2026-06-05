@@ -77,26 +77,30 @@ bool RMapManager::setCOW(PageInfo* pi) {
     // 无法找到起始点或为未加载物理页
     if (pi->hasFlag(PG_FREE)) return false;
     if (pi->getRef() == 0) return false;
-    if (pi->extra == RMAP_PTR_NULL) return false;
+    // 临时用于函数复制, 正常只能允许ELF加载
+    if (pi->hasFlag(PG_KERNEL) && pi->hasFlag(PG_RESERVED)) {
+        ;
+    } else {
+        if (pi->extra == RMAP_PTR_NULL) return false;
+    }
     // 遍历设置COW
     int cnt = pi->extra;
     while (cnt != RMAP_PTR_NULL) {
         uint32 pte_paddr = RMapStart[cnt].pte_paddr;
         uint16 owner = RMapStart[cnt].owner;
         ASSERT(pte_paddr != 0);
-        if (pte_paddr != PTE_ANON_PADDR) {
-            uint32 tmp = memoryManager.mapTemp(AddressPoolType::KERNEL, pte_paddr);
-            if (!tmp) {
-                // 严重错误, 无法恢复
-                ASSERT(0);
-            }
-            *((uint32*)tmp) = (*((uint32*)tmp) | PTE_COW) & (~PTE_WRITABLE); 
-            if (programManager.running->pid == owner) {
-                // 相同进程页表项变更, 有必要刷新
-                asm_invlpg((void*)RMapStart[cnt].pte_vaddr);
-            }
-            memoryManager.unmapTemp(AddressPoolType::KERNEL);
+
+        uint32 tmp = memoryManager.mapTemp(AddressPoolType::KERNEL, pte_paddr);
+        if (!tmp) {
+            // 严重错误, 无法恢复
+            ASSERT(0);
         }
+        *((uint32*)tmp) = (*((uint32*)tmp) | PTE_COW) & (~PTE_WRITABLE); 
+        if (programManager.running && programManager.running->pid == owner && RMapStart[cnt].pte_vaddr != PTE_ANON_VADDR) {
+            // 相同进程页表项变更, 有必要刷新
+            asm_invlpg((void*)(PTEVA2VADDR(RMapStart[cnt].pte_vaddr)));
+        }
+        memoryManager.unmapTemp(AddressPoolType::KERNEL);
         cnt = RMapStart[cnt].next;
     }
     return true;

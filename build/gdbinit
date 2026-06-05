@@ -11,4 +11,9 @@ break setup_kernel
 # b releasePages
 # layout src
 b idle_thread
+b createUserVirtualPool
+b MemoryManager::setCOW
+b load_process
+b ProgramManager::schedule
+c
 layout src

@@ -23,9 +23,10 @@ public:
     int length;
 public:
     void initialize(int _length, RMapEntry* _RMapStart, char* _bitmap);
-    // pte_addr保存的是 pte_pa
+    // 注意, attach和detach不做任何有关于PTE的维护,也即更改PTE请务必自己手动刷新
     int attach(PageInfo* pi, uint32 pte_paddr, uint32 pte_vaddr, uint16 owner);
-    // pte_addr保存的是 pte_pa
+    // 注意, attach和detach不做任何有关于PTE的维护,也即更改PTE请务必自己手动刷新
+    // 参数pte_vaddr不重要,可以随便传入
     bool detach(PageInfo* pi, uint32 pte_paddr, uint32 pte_vaddr, uint16 owner);
     bool setCOW(PageInfo* pi);  // 将pi内部所有的PTE都设置为COW状态, 如果其中还有ANON,则不处理
     // void detach_by_index(PageInfo* pi, int entry_idx);

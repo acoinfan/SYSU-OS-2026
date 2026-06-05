@@ -1,5 +1,5 @@
 [bits 32]
-
+%include "boot.inc"
 global asm_hello_world
 global asm_lidt
 global asm_unhandled_interrupt
@@ -34,6 +34,9 @@ ASM_UNHANDLED_INTERRUPT_INFO db 'Unhandled interrupt happened, halt...'
                              db 0
 ASM_IDTR dw 0
          dd 0
+ASM_GDTR dw 0
+         dd 0
+ASM_TEMP dd 0
 
 ; void asm_init_page_reg(int *directory);
 asm_init_page_reg:

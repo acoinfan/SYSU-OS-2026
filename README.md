@@ -87,3 +87,5 @@ stack   从STACK_TOP = 0xbfff0000 向下延伸 STACK_SIZE = 4MB (1024 PAGE)
 第一轮精确匹配，要求PTE_ADDR, OWNER完全匹配，若找到，减小ref(除非ref = 0)，复制这个PA，同时把这个条目删去
 第二轮模糊匹配，要求PTE_ADDR = 无效值, OWNER匹配，若找到，减小ref(除非ref = 0), 复制这个PA，同时把这个匿名条目删去
 否则，触发error
+
+记得不用函数测试的时候，关掉setCOW里面对PG_KERNEL的检测

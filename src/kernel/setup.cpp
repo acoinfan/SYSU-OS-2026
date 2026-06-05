@@ -6,6 +6,7 @@
 #include "sync.h"
 #include "memory.h"
 #include "address_pool.h"
+#include "tss.h"
 
 // 屏幕IO处理器
 STDIO stdio;
@@ -15,6 +16,14 @@ InterruptManager interruptManager;
 ProgramManager programManager;
 // 内存管理器
 MemoryManager memoryManager;
+// Task State Segment
+TSS tss;
+
+void first_process()
+{
+    asm_system_call(0, 132, 324, 12, 124);
+    asm_halt();
+}
 
 void first_thread(void *arg)
 {
@@ -26,9 +35,9 @@ void first_thread(void *arg)
     // }
     // stdio.moveCursor(0);
     interruptManager.disableTimeInterrupt();
-    char* p0 = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, VP_RW);
+    char* p0 = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, 1, VP_RW);
     *p0 = 0;
-    char* testp = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, VP_RW);
+    char* testp = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, 1, VP_RW);
     *testp = 0;
     memoryManager.releasePages(AddressPoolType::KERNEL, (int)p0, 1);
     memoryManager.releasePages(AddressPoolType::KERNEL, (int)testp, 1);
@@ -77,8 +86,8 @@ void first_thread(void *arg)
 void test_out_of_memory(void* arg) {
     printf("Out Of Memory Begin\n");
     interruptManager.disableTimeInterrupt();
-    char* p0 = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, VP_RW);
-    char* p1 = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, VP_RW);
+    char* p0 = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, 1, VP_RW);
+    char* p1 = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, 1, VP_RW);
 
     // OK
     *p0 = 0;
@@ -92,16 +101,16 @@ void test_out_of_memory(void* arg) {
 void test_lazy_alloc_thread(void* arg) {
     printf("Lazy Alloc Begin\n");
     interruptManager.disableTimeInterrupt();
-    char* p0 = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, VP_RW);
+    char* p0 = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, 1, VP_RW);
     // LAZY ALLOC RELEASE
     memoryManager.releasePages(AddressPoolType::KERNEL, (int)p0, 1);
 
     // LAZY ALLOC TEST
-    p0 = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, VP_RW);
+    p0 = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, 1, VP_RW);
     *p0 = 0;
     
     // LAZY_ALLOC & FIND_VICTIM
-    char* testp = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, VP_RW);
+    char* testp = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, 1, VP_RW);
     *testp = 0;
 
     // VICTIM_RELEASE
@@ -122,13 +131,17 @@ void test_lazy_alloc_thread(void* arg) {
 
 
 void idle_thread(void* arg) {
-    int pid = programManager.executeThread(test_lazy_alloc_thread, nullptr, "test_lazy_alloc_thread", 1);
-    if (pid == -1)
-    {
-        printf("can not execute thread\n");
-        asm_halt();
-    }    
-    asm_halt();
+    printf("start process\n");
+    programManager.executeProcess((const char *)first_process, 1, 1);
+    printf("Load Done\n");
+    ASSERT(0);
+    // int pid = programManager.executeThread(test_lazy_alloc_thread, nullptr, "test_lazy_alloc_thread", 1);
+    // if (pid == -1)
+    // {
+    //     printf("can not execute thread\n");
+    //     asm_halt();
+    // }    
+    // asm_halt();
 }
 
 extern "C" void setup_kernel()

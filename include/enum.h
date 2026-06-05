@@ -80,8 +80,8 @@ enum AddressPoolType
 
 enum struct FaultType : uint8 {
     DEMAND_ZERO = 0,
-    STACK_GROWTH,
-    HEAP_GROWTH,
+    STACK_GROWTH, // 保留字段
+    HEAP_GROWTH,  // 保留字段
     SWAP_IN,
     COPY_ON_WRITE,
     FILE_BACKED,
@@ -93,15 +93,16 @@ enum struct FaultType : uint8 {
     UNKNOWN
 };
 
-enum UserSegment {
-    EMPTY,
-    HEAP,
-    STACK,
-    MMAP,
-    TLS,
-    TEXT,
+enum UserSegment : unsigned char {
+    TEXT = 0,
     DATA,
-    BSS
+    BSS,
+    // 调为大数值,防止ELF解析出错时不明显
+    MMAP = 0xfb,
+    TLS = 0xfc,
+    HEAP = 0xfd,
+    STACK = 0xfe,
+    EMPTY = 0xff 
 };
 
 

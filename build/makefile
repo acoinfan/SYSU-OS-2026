@@ -46,7 +46,7 @@ $(CXX_OBJ): $(CXX_SOURCE)
 	$(CXX_COMPLIER) $(CXX_COMPLIER_FLAGS) -I$(INCLUDE_PATH) -c $(CXX_SOURCE)
 	
 asm_utils.o : $(SRCDIR)/utils/asm_utils.asm
-	$(ASM_COMPILER) -o asm_utils.o -g -f elf32 $(SRCDIR)/utils/asm_utils.asm
+	$(ASM_COMPILER) -o asm_utils.o -g -f elf32 $(SRCDIR)/utils/asm_utils.asm -I$(INCLUDE_PATH)
 clean:
 	rm -f *.o* *.bin 
 	

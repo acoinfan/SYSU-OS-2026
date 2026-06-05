@@ -142,7 +142,7 @@ VictimInfo PAddressPool::findVictim(uint32 search_length, uint32 round)
             {
                 uint32 rmapIdx = memoryManager.pageinfos[victim_pgi].extra;
                 RMapEntry rmapEntry = memoryManager.rmapManager.RMapStart[rmapIdx];
-                uint32 *PTEptr = (uint32 *)rmapEntry.pte_addr;
+                uint32 *PTEptr = (uint32 *)rmapEntry.pte_vaddr;
                 int access = (!!((*PTEptr) & PTE_ACCESSED)) << 1U;
                 int dirty = (!!((*PTEptr) & PTE_DIRTY));
 

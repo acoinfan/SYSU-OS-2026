@@ -11,7 +11,6 @@ extern InterruptManager interruptManager;
 extern STDIO stdio;
 extern ProgramManager programManager;
 extern MemoryManager memoryManager;
-
-TSS tss;
+extern TSS tss;
 
 #endif

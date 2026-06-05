@@ -165,7 +165,7 @@ void MemoryManager::initialize()
 
     // Set Kernel Pages
     // DEBUG:
-    kernelPages = 1;
+    // kernelPages = 1;
     kernelPhysical.initialize(
         (char *)kernelPhysicalBitMapStart,
         kernelPages,
@@ -192,7 +192,11 @@ void MemoryManager::initialize()
     rmapManager.initialize(RMapNodeCount, 
         (RMapEntry*)RMapNodeListStart, 
         (char*)RMapBitMapStart);
-            
+    
+    // for mapTemp/unmapTemp reservation
+    // kernelVirtualStartAddress is used for temp map
+    kernelVirtual.resources.set(0, true);
+
     // Set PageInfo
     int usedPages = usedMemory / PAGE_SIZE;
     for (int i = 0; i < usedPages; i++) {
@@ -449,10 +453,13 @@ bool MemoryManager::connectPhysicalVirtualPage(const int virtualAddress, const i
         ASSERT(0);
     }
     *pte = physicalPageAddress | pteFlag | PTE_PRESENT;
+    // 刷新TLB
+    asm_invlpg((void*)virtualAddress);
 
-    // 绑定rmap
+    // 绑定rmap(注意存的是pte的PA)
     int owner = programManager.running ? programManager.running->pid : 0;
-    rmapManager.attach(&pageinfos[PA2PGI(physicalPageAddress)], (uint32)pte, owner);
+    uint32 pte_pa = toPTEpa(virtualAddress);
+    ASSERT(rmapManager.attach(&pageinfos[PA2PGI(physicalPageAddress)], pte_pa, (uint32)pte, owner) != -1);
     // DEBUG:
     printf("bind VA=0x%x to PA=0x%x\n", virtualAddress, physicalPageAddress);
     pageinfos[PA2PGI(physicalPageAddress)].dump();
@@ -471,6 +478,14 @@ int MemoryManager::toPTE(const int virtualAddress)
     return (0xffc00000 + ((virtualAddress & 0xffc00000) >> 10) + (((virtualAddress & 0x003ff000) >> 12) * 4));
 }
 
+int MemoryManager::toPTEpa(const int vaddr)
+{
+    uint32 *pde = (uint32 *)toPDE(vaddr);
+    if (!(*pde & PTE_PRESENT)) return 0;
+    uint32 pte_idx = (vaddr >> 12) & 0x3FF;
+    return ((*pde) & PTE_GET_ADDRESS) + (pte_idx << 2);
+}
+
 void MemoryManager::releasePages(enum AddressPoolType type, const int virtualAddress, const int count, UserSegment userSegment)
 {
     int vaddr = virtualAddress;
@@ -482,6 +497,8 @@ void MemoryManager::releasePages(enum AddressPoolType type, const int virtualAdd
         // 若不存在PTE, 跳过释放
         if (!((*pte) & PTE_PRESENT)) {
             *pte = 0;
+            // 刷新TLB
+            asm_invlpg((void*)vaddr);
             continue;
         } 
    
@@ -490,7 +507,10 @@ void MemoryManager::releasePages(enum AddressPoolType type, const int virtualAdd
         // DEBUG:
         printf("try Free VA=0x%x, PA=0x%x\n", vaddr, paddr);
         pageinfos[PA2PGI(paddr)].dump();
-        rmapManager.detach(&pageinfos[PA2PGI(paddr)], (uint32)pte, owner);
+        uint32 pte_pa = toPTEpa(vaddr);
+        // 解除rmap绑定
+        ASSERT(rmapManager.detach(&pageinfos[PA2PGI(paddr)], pte_pa, 0, owner));
+
         pageinfos[PA2PGI(paddr)].dump();
         if (pageinfos[PA2PGI(paddr)].getRef() == 0) {
             releasePhysicalPages(type, paddr, 1);
@@ -500,7 +520,9 @@ void MemoryManager::releasePages(enum AddressPoolType type, const int virtualAdd
 
         // 设置页表项为不存在，防止释放后被再次使用
         *pte = 0;
-
+        // 刷新TLB
+        asm_invlpg((void*)vaddr);
+        
         // TODO: 分析页表是否可以被释放, 如果释放记得减小ref
     }
 
@@ -580,4 +602,57 @@ VictimInfo MemoryManager::findVictim(enum AddressPoolType type) {
         victimInfo.PTEptr = 0;
     }
     return victimInfo;
+}
+
+uint32 MemoryManager::mapTemp(enum AddressPoolType type, const int paddr) {
+    ASSERT(type == AddressPoolType::KERNEL);
+    uint32 base = paddr & ~0xFFF;
+    uint32 offset = paddr & 0xFFF;
+
+    uint32 vaddr = kernelVirtual.startAddress;
+    if (!vaddr) return 0;
+
+    uint32 *pde = (uint32 *)toPDE(vaddr);
+    uint32 *pte = (uint32 *)toPTE(vaddr);
+    // 页目录项无对应的页表，先分配一个页表
+    if(!(*pde & 0x00000001)) 
+    {
+        // 从内核物理地址空间中分配一个页表
+        int page = allocatePhysicalPages(AddressPoolType::KERNEL, 1);
+        if (!page)
+            return 0;
+        else {
+            pageinfos[PA2PGI(page)].clear();
+            pageinfos[PA2PGI(page)].incRef();
+            pageinfos[PA2PGI(page)].setFlag(PG_KERNEL | PG_LOCKED);
+        }
+        // 使页目录项指向页表, 同时设置权限位
+
+        *pde = page | 0x7;
+        // 初始化页表
+        char *pagePtr = (char *)(((int)pte) & 0xfffff000);
+        memset(pagePtr, 0, PAGE_SIZE);
+    }
+    ASSERT((*pte) % PAGE_SIZE == 0);
+    *pte = base | 0x7;
+    asm_invlpg((void*)vaddr);
+    return vaddr + offset;
+}
+
+void MemoryManager::unmapTemp(enum AddressPoolType type) {
+    ASSERT(type == AddressPoolType::KERNEL);
+
+    uint32 vaddr = kernelVirtual.startAddress; 
+    int *pte = (int *)toPTE(vaddr);
+
+    // 确认是合法的
+    ASSERT((*pte) & PTE_PRESENT);
+    ASSERT((*pte) & PTE_GET_ADDRESS);
+    // 清除原有的TempMap
+    *pte = 0x0;
+    asm_invlpg((void*)vaddr);
+}
+
+bool MemoryManager::setCOW(PageInfo* pi) {
+    return rmapManager.setCOW(pi);
 }

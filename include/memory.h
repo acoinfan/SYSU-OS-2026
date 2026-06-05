@@ -8,6 +8,12 @@
 // align只能为2的幂
 #define ALIGN(align, n) (((n) + ((align) - 1)) & ~((align) - 1))
 
+// 仅适用于PTEVaddr -> 受PTE管理的vaddr (用于rmap中反向获取需要刷新的TLB地址)
+// 务必保证是正确的页表才可使用
+#define PTEVA2VADDR(pte_ptr) \
+    ((((uint32)(pte_ptr) - 0xFFC00000) >> 12) << 22 | \
+     ((((uint32)(pte_ptr) - 0xFFC00000) >> 2) & 0x3FF) << 12)
+
 class MemoryManager
 {
 public:
@@ -38,12 +44,15 @@ public:
     int getTotalMemory();
 
     // 页内存分配
+    // 成功，返回起始地址；失败，返回0
     int allocatePages(enum AddressPoolType type, const int count, const VPageFlags flag, UserSegment userSegment = UserSegment::EMPTY);
 
     // 页内存懒分配
+    // 成功，返回起始地址；失败，返回0
     int allocatePagesLazy(enum AddressPoolType type, const int count, const VPageFlags flag, UserSegment userSegment = UserSegment::EMPTY);
     
     // 虚拟页分配
+    // 成功，返回起始地址；失败，返回0
     int allocateVirtualPages(enum AddressPoolType type, const int count, const VPageFlags flag, UserSegment userSegment = UserSegment::EMPTY);
 
     // 建立虚拟页到物理页的联系
@@ -54,6 +63,9 @@ public:
 
     // 计算virtualAddress的页表项的虚拟地址
     int toPTE(const int virtualAddress);
+
+    // 计算virtualAddress的页表项的物理地址
+    int toPTEpa(const int virtualAddress);
 
     // 页内存释放
     void releasePages(enum AddressPoolType type, const int virtualAddress, const int count, UserSegment userSegment = UserSegment::EMPTY);    
@@ -66,6 +78,15 @@ public:
 
     // CLOCK (0,0) is Invalid
     VictimInfo findVictim(enum AddressPoolType type);
+
+    // 请务必将两者成对使用,且务必明确正在做什么
+    // 返回的是临时分配页的页首地址 + offset(也就是可以直接使用), 失败是0
+    // paddr可以是任何合法地址, 不一定只归属Kernel PA Pool
+    uint32 mapTemp(enum AddressPoolType type, const int paddr);
+    // 请务必将两者成对使用,且务必明确正在做什么
+    void unmapTemp(enum AddressPoolType type);
+
+    bool setCOW(PageInfo* pi);
 };
 
 #endif

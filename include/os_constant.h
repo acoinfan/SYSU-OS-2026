@@ -4,6 +4,7 @@
 #define IDT_START_ADDRESS 0xc0008880
 #define MAX_PROGRAM_NAME 16
 #define MAX_PROGRAM_AMOUNT 16
+#define MAX_THREAD_AMOUNT 32
 
 #define MEMORY_SIZE_ADDRESS 0xc0007c00 
 #define PAGE_SIZE 4096
@@ -15,6 +16,7 @@
 #define KERNEL_VIRTUAL_START 0xc0100000
 #define KERNEL_VIRTUAL_END 0xffffffff
 #define PTE_SIZE 0x4
+#define PTE_ANON_VADDR 0xff         // 用于rmap的COW ANON PTE vaddr, 不选择0更安全
 
 #define SCREEN_MEMORY 0xc00b8000
 
@@ -45,5 +47,14 @@
 
 #define STACK_SELECTOR 0x10
 #define CODE_SELECTOR 0x20
+
+// PROCESS
+#define STACK_PREALLOC_PAGE 1
+#define STACK_TOP 0xbfff0000
+#define STACK_SIZE 0x400000 // 4MB
+
+#define HEAP_SIZE 0x40000000 // 1GB
+
+#define ELF_SEGMENT_AMOUNT 0x8
 
 #endif

@@ -19,13 +19,13 @@ struct VictimInfo {
 };
 
 struct VAddressPoolConfig {
-    char* bitmap;
-    uint32 length;
-    uint32 start_addr;
-    uint32 end_addr;
-    uint32 privilegePtr;   // 非静态时使用
-    VPageFlags static_privilege = (VPageFlags)(VP_RW|VP_USER);
-    bool is_static = false;
+    char* bitmap;           // BitMap Start Address
+    uint32 length;          // 管理的总页数
+    uint32 start_addr;      // 管理的起始地址(左闭右闭)
+    uint32 end_addr;        // 管理的终止地址(左闭右闭)
+    uint32 privilegePtr;    // 非静态时使用
+    VPageFlags static_privilege = (VPageFlags)(VP_RW|VP_USER);  // 静态privilege
+    bool is_static = false; // 是否静态
 };
 
 typedef VAddressPoolConfig VAPConfig;
