@@ -102,5 +102,16 @@ void fork_test() {
             //        programManager.running->pid);
         }
     }
-    return;
+    while(1) {
+        ; // 未实现return
+    }
+}
+
+void stack_test() {
+    char buf[2 * PAGE_SIZE];
+
+    for (int i = 0; i < sizeof(buf); i++)
+        buf[i] = i % 26;
+
+    write("done\n");
 }

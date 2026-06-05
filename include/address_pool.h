@@ -143,7 +143,7 @@ public:
     void destroy();
 
     int allocate(UserSegment seg, const uint32 count, VPageFlags privilege, bool reverse = false);
-
+    
     void release(UserSegment seg, const uint32 vaddr, const uint32 count);
 
     VPageFlags getVPageFlag(UserSegment seg, const uint32 vaddr);

@@ -19,6 +19,7 @@ extern "C" void c_page_fault_handler(uint32 error_code)
     if (!(PDE & PTE_PRESENT)) {
         faultType = FaultType::PAGE_TABLE_BROKEN;
         printf("Page Fault: PAGE_TABLE_BROKEN, halt\n");
+        printf("broken addr: 0x%x, pid: %d\n", addr, programManager.running->pid);
         asm_halt();
     } else {
         PTE = *(uint32*)memoryManager.toPTE(addr);
@@ -33,6 +34,18 @@ extern "C" void c_page_fault_handler(uint32 error_code)
             // Swap In
             } else if (PTE & PTE_SWAP) {
                 faultType = FaultType::SWAP_IN;
+            } else if (from_user) {
+                UserSegment userSeg = programManager.running->userVirtual.vaddr2Seg(addr);
+                switch (userSeg) {
+                    case UserSegment::HEAP:
+                        faultType = FaultType::HEAP_GROWTH;
+                        break;
+                    case UserSegment::STACK:
+                        faultType = FaultType::STACK_GROWTH;
+                        break;
+                    default:
+                        faultType = FaultType::INVALID_ADDRESS;
+                }
             } else {
                 faultType = FaultType::INVALID_ADDRESS;
             }

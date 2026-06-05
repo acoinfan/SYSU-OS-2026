@@ -378,6 +378,27 @@ int UserVAddressPool::allocate(UserSegment seg, const uint32 count, VPageFlags p
     }
 }
 
+// 成功则返回第一个页的地址，失败则返回-1
+// int UserVAddressPool::allocateLazy(UserSegment seg, const uint32 count, VPageFlags privilege, bool reverse) {
+//     switch (seg) {
+//         case UserSegment::TEXT:
+//         case UserSegment::DATA:
+//         case UserSegment::BSS:
+//             return -1;
+
+//         case UserSegment::HEAP:
+//             return heapPool.allocateLazy(count, VP_CLEAR, /*reverse=*/false);   // Privilege不会影响固定池
+//         case UserSegment::STACK:
+//             return stackPool.allocate(count, VP_CLEAR, /*reverse=*/true);
+//         case UserSegment::TLS:
+//             return TLSPool.allocate(count, privilege, reverse);
+//         case UserSegment::MMAP:
+//             return mmapPool.allocate(count, privilege, reverse);
+//         default:
+//             return -1;
+//     }
+// }
+
 void UserVAddressPool::release(UserSegment seg, const uint32 vaddr, const uint32 count) {
     switch (seg) {
         case UserSegment::TEXT:

@@ -504,6 +504,7 @@ ELFConfig ProgramManager::parseELF(const char* filename) {
     return {};
 }
 
+// 传0代表是fork
 void load_process(const void *entry)
 {
     interruptManager.disableInterrupt();
@@ -533,17 +534,16 @@ void load_process(const void *entry)
     interruptStack->cs = programManager.USER_CODE_SELECTOR;   // 用户模式平坦模式
     interruptStack->eflags = (0 << 12) | (1 << 9) | (1 << 1); // IOPL, IF = 1 开中断, MBS = 1 默认
 
-    interruptStack->esp = memoryManager.allocatePages(AddressPoolType::USER, 1, (VPageFlags)(VP_USER|VP_RW), UserSegment::STACK);
-
-    if (interruptStack->esp == 0)
-    {
-        printf("can not build process!\n");
-        process->status = ProgramStatus::DEAD;
-        asm_halt();
-    }
-    interruptStack->esp += PAGE_SIZE;
+    // interruptStack->esp = USER_VADDR_END - 0x3;
+    // interruptStack->esp = memoryManager.allocatePages(AddressPoolType::USER, 1, (VPageFlags)(VP_USER|VP_RW), UserSegment::STACK);
+    interruptStack->esp = STACK_TOP - 4;
     interruptStack->ss = programManager.USER_STACK_SELECTOR;
 
+    // 创建进程,直接lazyAlloc栈, 否则就使用默认COW
+    if (entry)
+        uint32 addr = memoryManager.allocatePagesLazy(AddressPoolType::USER, STACK_SIZE / PAGE_SIZE, (VPageFlags)(VP_USER | VP_RW), UserSegment::STACK, true);
+    else 
+        printf("load fork from load_process\n");
     asm_start_process((int)interruptStack);
 }
 

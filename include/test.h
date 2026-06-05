@@ -6,4 +6,5 @@ void test_lazy_alloc_thread(void* arg);
 void COW_writer();
 void COW_reader();
 void fork_test();
+void stack_test();
 #endif

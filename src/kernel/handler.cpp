@@ -131,8 +131,14 @@ bool handle_user_page_fault(const PageFaultInfo& info) {
                 memset((void*)vaddr, 0, PAGE_SIZE);
             }
             return true;
+        } 
+        case FaultType::STACK_GROWTH: {
+            // uint32 addr = memoryManager.allocatePagesLazy(AddressPoolType::USER, 1, (VPageFlags)(VP_RW | VP_USER), UserSegment::STACK, true);
+            // if (!addr) return false;
+            // return true;
         }
         default: {
+            printf("fail addr: 0x%x, pid: %d\n", info.addr, programManager.running->pid);
             ASSERT(0);
             asm_halt();
 
