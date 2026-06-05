@@ -7,7 +7,8 @@
 #include "os_modules.h"
 
 const int PCB_SIZE = 4096;                   // PCB的大小，4KB。
-char PCB_SET[PCB_SIZE * MAX_PROGRAM_AMOUNT]; // 存放PCB的数组，预留了MAX_PROGRAM_AMOUNT个PCB的大小空间。
+// 存放PCB的数组，预留了MAX_PROGRAM_AMOUNT个PCB的大小空间, 最后的空间留给interrupt_stack
+char PCB_SET[PCB_SIZE * MAX_PROGRAM_AMOUNT + MAX_INTERRUPT_STACK_SIZE]; 
 bool PCB_SET_STATUS[MAX_PROGRAM_AMOUNT];     // PCB的分配状态，true表示已经分配，false表示未分配。
 
 ProgramManager::ProgramManager() {}
@@ -19,7 +20,8 @@ void ProgramManager::initialize(SchedulerType _sType)
     allPrograms.initialize();
     running = nullptr;
     sType = _sType;
-    
+    interrupt_stack = (uint32)&PCB_SET[PCB_SIZE * MAX_PROGRAM_AMOUNT];
+
     for (int i = 0; i < MAX_PROGRAM_AMOUNT; ++i)
     {
         PCB_SET_STATUS[i] = false;
@@ -127,7 +129,7 @@ int ProgramManager::executeThread(ThreadFunction function, void *parameter, cons
 
 void ProgramManager::schedule()
 {
-    printf("Call Schedule\n");
+    // printf("Call Schedule\n");
     bool status = interruptManager.getInterruptStatus();
     interruptManager.disableInterrupt();
     
@@ -465,7 +467,8 @@ bool ProgramManager::createUserVirtualPool(PCB *process, const ELFConfig& elfCon
         // copy on write: .text
         uint32* pgdir = (uint32*)process->pageDirectoryAddress;
         uint32 vaddr = segBoundary.text.start;
-        uint32 paddrStart = ALIGN(elfConf.entry, PAGE_SIZE);
+        // 注意,传入的是entry在内核的虚拟地址, 需要转化为物理地址
+        uint32 paddrStart = memoryManager.vaddr2paddr(ALIGN(PAGE_SIZE, elfConf.entry));
 
         // 遍历涉及的PTE和物理页, 同时设置cow
         for (uint32 paddr = paddrStart; vaddr < segBoundary.text.end; vaddr += PAGE_SIZE, paddr += PAGE_SIZE) {
@@ -487,7 +490,7 @@ bool ProgramManager::createUserVirtualPool(PCB *process, const ELFConfig& elfCon
                         uint32* pde_clear = &pgdir[pde_clear_idx];
                         uint32 pteTablePAptr_clear = *pde_clear & PTE_GET_ADDRESS;
                         uint32 pte_clear_idx = (vaddrClear >> 12) & 0x3FF;
-                        uint32 pte_clear_paddr = (uint32)(&((uint32*)pteTablePAptr_clear)[pte_clear_idx]);
+                        uint32 pte_clear_paddr = pteTablePAptr_clear + (pte_clear_idx << 2);
                         memoryManager.rmapManager.detach(&memoryManager.pageinfos[PA2PGI(paddrClear)], 
                                                         pte_clear_paddr, 0, owner);
                     }
@@ -511,10 +514,11 @@ bool ProgramManager::createUserVirtualPool(PCB *process, const ELFConfig& elfCon
 
         
             // 设置自身的COW Part1
-            uint32 pteTablePAptr = *pde & PTE_GET_ADDRESS;
-            uint32 tmp = memoryManager.mapTemp(AddressPoolType::KERNEL, pteTablePAptr);
+            // BUG FIX~!
+            uint32 ptePABase = *pde & PTE_GET_ADDRESS;
             uint32 pte_idx = (vaddr >> 12) & 0x3FF;
-            uint32 pte_paddr = tmp + (pte_idx << 2);
+            uint32 pte_paddr = ptePABase + (pte_idx << 2);
+            uint32 tmp = memoryManager.mapTemp(AddressPoolType::KERNEL, pte_paddr);   // tmp是临时指向pte的指针
             // 若分配失败, 释放
             // 事实上,由于先设置了其他Physical Page的合法COW
             // 前序的分配会使得前面的COW状态不对, 这里的ref和rmap没有更新不用清除, 后续的未有操作不用清除
@@ -530,7 +534,7 @@ bool ProgramManager::createUserVirtualPool(PCB *process, const ELFConfig& elfCon
                     uint32* pde_clear = &pgdir[pde_clear_idx];
                     uint32 pteTablePAptr_clear = *pde_clear & PTE_GET_ADDRESS;
                     uint32 pte_clear_idx = (vaddrClear >> 12) & 0x3FF;
-                    uint32 pte_clear_paddr = (uint32)(&((uint32*)pteTablePAptr_clear)[pte_clear_idx]);
+                    uint32 pte_clear_paddr = pteTablePAptr_clear + (pte_clear_idx << 2);
                     memoryManager.rmapManager.detach(&memoryManager.pageinfos[PA2PGI(paddrClear)], 
                                                     pte_clear_paddr, 0, owner);
                 }
@@ -540,9 +544,9 @@ bool ProgramManager::createUserVirtualPool(PCB *process, const ELFConfig& elfCon
             // 设置自身的COW Part2
             
             // 设置自身PTE
-            *(uint32*)tmp = paddr | PTE_PRESENT | PTE_USER_ACCESS | PTE_COW;
-            if (pte_paddr)
-            memoryManager.unmapTemp(AddressPoolType::KERNEL);
+            *(uint32*)tmp = (paddr | PTE_PRESENT | PTE_USER_ACCESS | PTE_COW) & ~PTE_WRITABLE;
+            if (tmp)
+                memoryManager.unmapTemp(AddressPoolType::KERNEL);
             // 插入rmap, 如果当前进程=owner, 必须要传真pte-vaddr(高一点那个)
             if (programManager.running && programManager.running->pid == owner) {
                 memoryManager.rmapManager.attach(&memoryManager.pageinfos[PA2PGI(paddr)],
@@ -642,7 +646,7 @@ void load_process(const void *entry)
     interruptManager.disableInterrupt();
 
     PCB *process = programManager.running;
-    ProcessStartStack *interruptStack = (ProcessStartStack *)((int)process + PAGE_SIZE - sizeof(ProcessStartStack));
+    ProcessStartStack *interruptStack = (ProcessStartStack *)programManager.interrupt_stack;
 
     interruptStack->edi = 0;
     interruptStack->esi = 0;

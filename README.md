@@ -89,3 +89,10 @@ stack   从STACK_TOP = 0xbfff0000 向下延伸 STACK_SIZE = 4MB (1024 PAGE)
 否则，触发error
 
 记得不用函数测试的时候，关掉setCOW里面对PG_KERNEL的检测
+
+/* PDE PTE:
+   31-12   11     10     9     8     7     6      5     4     3     2     1     0
+   ADDR   LAZY   SWAP   COW    G    PAT  Dirty Access  PCD   PWT   U/S   W/R Present
+
+*/
+           0      0     0      0     0     1      1     0     0     1     1     1

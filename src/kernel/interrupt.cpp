@@ -9,9 +9,9 @@
 #include "pageinfo.h"
 
 int times = 0;
-extern "C" void c_page_fault_handler()
+extern "C" void c_page_fault_handler(uint32 error_code)
 {
-    bool from_user = false;
+    bool from_user = (error_code & (1u << 2)) != 0;
     FaultType faultType = FaultType::UNKNOWN;
     uint32 addr = (uint32)asm_get_page_error_addr();
     uint32 PDE = *(uint32*)memoryManager.toPDE(addr);
@@ -38,8 +38,8 @@ extern "C" void c_page_fault_handler()
             }
         } else {
             uint32 paddr = PTE & PTE_GET_ADDRESS;
-            // Kernel Reserved
-            if (memoryManager.pageinfos[PA2PGI(paddr)].hasFlag(PG_KERNEL) && memoryManager.pageinfos[PA2PGI(paddr)].hasFlag(PG_RESERVED)) {
+            // Kernel Reserved (测试COW-Func时请务必关掉它)
+            if (0 && memoryManager.pageinfos[PA2PGI(paddr)].hasFlag(PG_KERNEL) && memoryManager.pageinfos[PA2PGI(paddr)].hasFlag(PG_RESERVED)) {
                 faultType = FaultType::KERNEL_RESERVED;
             // Copy On Write
             } else if ((!(PTE & PTE_WRITABLE)) && (PTE & PTE_COW)) {

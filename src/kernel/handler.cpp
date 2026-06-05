@@ -14,6 +14,7 @@ void handle_kernel_page_fault(const PageFaultInfo& info) {
         case FaultType::COPY_ON_WRITE: {
             printf("Page Fault: Kernel Cannot COPY_ON_WRITE, halt\n");
             ASSERT(0);
+            asm_halt();
         }
         case FaultType::DEMAND_ZERO: {
             if (!memoryManager.kernelVirtual.isValidAddr(info.addr)) {
@@ -49,12 +50,14 @@ void handle_kernel_page_fault(const PageFaultInfo& info) {
 bool handle_user_page_fault(const PageFaultInfo& info) {
     printf("USER FAULT: faultType = %d\n", (int)info.faultType);
     printf("Page Fault Handler: Hit at address 0x%x\n", info.addr);
+
     if (!programManager.running) return false;
     UserVAddressPool& userVirtual = programManager.running->userVirtual;
     uint32 owner = programManager.running->pid;
 
     switch (info.faultType) {
         case FaultType::COPY_ON_WRITE: {
+            printf("Page Fault: COPY_ON_WRITE start\n");
             UserSegment userSegment = userVirtual.vaddr2Seg(info.addr);
             if (userSegment == UserSegment::EMPTY) {
                 printf("Page Fault: COPY_ON_WRITE but INVALID_ADDRESS, return false\n");

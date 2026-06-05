@@ -10,10 +10,12 @@ break setup_kernel
 # b first_thread
 # b releasePages
 # layout src
-b idle_thread
-b createUserVirtualPool
-b MemoryManager::setCOW
-b load_process
-b ProgramManager::schedule
+# b idle_thread
+# b createUserVirtualPool
+# b MemoryManager::setCOW
+# b load_process
+# b ProgramManager::schedule
+b asm_start_process
+b asm_sys_call
 c
 layout src

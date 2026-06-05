@@ -148,15 +148,17 @@ asm_page_fault_handler:
     mov ds, ax
     mov es, ax
 
+    mov eax, [esp + 32 + 16]   ; error code
+    push eax                   ; 作为实参传给 C
     call c_page_fault_handler
+    add esp, 4
 
     popad
     pop gs
     pop fs
     pop es
     pop ds
-
-    add esp, 4            ; 弹出 CPU 压入的 error code
+    add esp, 4                 ; 丢掉原始 error code
     iretd
 
 ; void asm_in_port(uint16 port, uint8 *value)

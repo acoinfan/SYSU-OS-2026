@@ -69,6 +69,7 @@ class ProgramManager
 public:
     List allPrograms;   // 所有状态的线程/进程的队列
     PCB *running;       // 当前执行的线程
+    uint32 interrupt_stack;  // interrupt stack起始地址, 在PCB_SET的末尾预留 
 
     int USER_CODE_SELECTOR;  // 用户代码段选择子
     int USER_DATA_SELECTOR;  // 用户数据段选择子

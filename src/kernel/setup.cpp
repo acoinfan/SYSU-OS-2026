@@ -7,6 +7,8 @@
 #include "memory.h"
 #include "address_pool.h"
 #include "tss.h"
+#include "syscall.h"
+#include "test.h"
 
 // 屏幕IO处理器
 STDIO stdio;
@@ -18,6 +20,8 @@ ProgramManager programManager;
 MemoryManager memoryManager;
 // Task State Segment
 TSS tss;
+// 系统调用
+SystemService systemService;
 
 void first_process()
 {
@@ -83,56 +87,11 @@ void first_thread(void *arg)
     asm_halt();
 }
 
-void test_out_of_memory(void* arg) {
-    printf("Out Of Memory Begin\n");
-    interruptManager.disableTimeInterrupt();
-    char* p0 = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, 1, VP_RW);
-    char* p1 = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, 1, VP_RW);
-
-    // OK
-    *p0 = 0;
-    printf("Part 1 OK\n");
-    // FAIL
-    *p1 = 0;
-    printf("Never Reach Here\n");
-    interruptManager.enableTimeInterrupt(); 
-    return;
-}
-void test_lazy_alloc_thread(void* arg) {
-    printf("Lazy Alloc Begin\n");
-    interruptManager.disableTimeInterrupt();
-    char* p0 = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, 1, VP_RW);
-    // LAZY ALLOC RELEASE
-    memoryManager.releasePages(AddressPoolType::KERNEL, (int)p0, 1);
-
-    // LAZY ALLOC TEST
-    p0 = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, 1, VP_RW);
-    *p0 = 0;
-    
-    // LAZY_ALLOC & FIND_VICTIM
-    char* testp = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, 1, VP_RW);
-    *testp = 0;
-
-    // VICTIM_RELEASE
-    memoryManager.releasePages(AddressPoolType::KERNEL, (int)p0, 1);
-    // LAZY ALLOC RELEASE
-    memoryManager.releasePages(AddressPoolType::KERNEL, (int)testp, 1);
-    printf("Lazy Alloc Done\n");
-    interruptManager.enableTimeInterrupt();
-
-    int pid = programManager.executeThread(test_out_of_memory, nullptr, "test_out_of_memory", 1);
-    if (pid == -1)
-    {
-        printf("can not execute thread\n");
-        asm_halt();
-    }
-    return;
-}
-
 
 void idle_thread(void* arg) {
     printf("start process\n");
-    programManager.executeProcess((const char *)first_process, 1, 1);
+    programManager.executeProcess((const char *)COW_writer, 1, 1);
+    programManager.executeProcess((const char *)COW_reader, 1, 1);
     printf("Load Done\n");
     ASSERT(0);
     // int pid = programManager.executeThread(test_lazy_alloc_thread, nullptr, "test_lazy_alloc_thread", 1);
@@ -161,7 +120,9 @@ extern "C" void setup_kernel()
     // 内存管理器
     memoryManager.initialize();
 
-
+    // 初始化系统调用
+    systemService.initialize();
+    
     // 创建第一个线程
     int pid = programManager.executeThread(idle_thread, nullptr, "idle thread", 1);
     if (pid == -1)
