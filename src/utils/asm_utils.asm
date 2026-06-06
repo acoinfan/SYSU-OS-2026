@@ -20,6 +20,7 @@ global asm_ltr
 global asm_add_global_descriptor
 global asm_start_process
 global asm_update_cr3
+global asm_save_process_context
 
 extern c_time_interrupt_handler
 extern system_call_table
@@ -247,6 +248,53 @@ asm_update_cr3:
     mov eax, dword[esp+8]
     mov cr3, eax
     pop eax
+    ret
+
+; void asm_save_process_context(struct ProcessStartStack* dest)
+asm_save_process_context:
+    push ebp
+    mov ebp, esp
+    mov eax, [ebp + 8]        ; dest buffer
+    lea edx, [ebp + 28]       ; pointer to saved pushad block (EDI first)
+
+    mov ecx, [edx + 0]
+    mov [eax + 0], ecx        ; edi
+    mov ecx, [edx + 4]
+    mov [eax + 4], ecx        ; esi
+    mov ecx, [edx + 8]
+    mov [eax + 8], ecx        ; ebp
+    mov ecx, [edx + 12]
+    mov [eax + 12], ecx       ; esp_dummy (saved esp)
+    mov ecx, [edx + 16]
+    mov [eax + 16], ecx       ; ebx
+    mov ecx, [edx + 20]
+    mov [eax + 20], ecx       ; edx
+    mov ecx, [edx + 24]
+    mov [eax + 24], ecx       ; ecx
+    mov ecx, [edx + 28]
+    mov [eax + 28], ecx       ; eax
+
+    mov ecx, [edx + 32]
+    mov [eax + 32], ecx       ; gs
+    mov ecx, [edx + 36]
+    mov [eax + 36], ecx       ; fs
+    mov ecx, [edx + 40]
+    mov [eax + 40], ecx       ; es
+    mov ecx, [edx + 44]
+    mov [eax + 44], ecx       ; ds
+
+    mov ecx, [edx + 48]
+    mov [eax + 48], ecx       ; eip
+    mov ecx, [edx + 52]
+    mov [eax + 52], ecx       ; cs
+    mov ecx, [edx + 56]
+    mov [eax + 56], ecx       ; eflags
+    mov ecx, [edx + 60]
+    mov [eax + 60], ecx       ; esp (user)
+    mov ecx, [edx + 64]
+    mov [eax + 64], ecx       ; ss
+
+    pop ebp
     ret
 
 ; void asm_start_process(int stack);

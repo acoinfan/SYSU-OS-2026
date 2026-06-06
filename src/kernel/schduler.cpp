@@ -1,22 +1,23 @@
 #include "scheduler.h"
+#include "debug.h"
 
 // RRSchdeuler
 void RRScheduler::initialize(const List& _allPrograms) {
     readyPrograms.clear();
     readyPrograms.initialize();
     allPrograms = &_allPrograms;
-    printf("initializing RRScheduler\n");
+    LOG_TRACE("initializing RRScheduler\n");
     for (ListItem* item = allPrograms->head.next; item != allPrograms->back(); item = item->next) {
         PCB* pcb = ListItem2PCB(item, tagInAllList);
         if (pcb->status == ProgramStatus::READY) {
             readyPrograms.push_back(&(pcb->tagInGeneralList));
         }
     }
-    printf("RRScheduler Init done\n");
+    LOG_TRACE("RRScheduler Init done\n");
 }
 void RRScheduler::enqueue(PCB* readyThread) {
     if (readyThread->status != ProgramStatus::READY) {
-        printf("Invalid Enqueue for boundary test");
+        LOG_ERROR("Invalid Enqueue for boundary test");
     }
     readyPrograms.push_back(&(readyThread->tagInGeneralList));
     return;
@@ -64,18 +65,18 @@ void FIFSScheduler::initialize(const List& _allPrograms) {
     readyPrograms.clear();
     readyPrograms.initialize();
     allPrograms = &_allPrograms;
-    printf("initializing FIFSScheduler\n");
+    LOG_TRACE("initializing FIFSScheduler\n");
     for (ListItem* item = allPrograms->head.next; item != allPrograms->back(); item = item->next) {
         PCB* pcb = ListItem2PCB(item, tagInAllList);
         if (pcb->status == ProgramStatus::READY) {
             readyPrograms.push_back(&(pcb->tagInGeneralList));
         }
     }
-    printf("FIFSScheduler Init done\n");
+    LOG_TRACE("FIFSScheduler Init done\n");
 }
 void FIFSScheduler::enqueue(PCB* readyThread) {
     if (readyThread->status != ProgramStatus::READY) {
-        printf("Invalid Enqueue for boundary test");
+        LOG_ERROR("Invalid Enqueue for boundary test");
     }
     readyPrograms.push_back(&(readyThread->tagInGeneralList));
     return;

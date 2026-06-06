@@ -6,26 +6,33 @@
 #include "os_modules.h"
 #include "program.h"
 #include "pageinfo.h"
+#include "debug.h"
 
 void handle_kernel_page_fault(const PageFaultInfo& info) {
-    printf("KERNEL FAULT: faultType = %d\n", (int)info.faultType);
-    printf("Page Fault Handler: Hit at address 0x%x\n", info.addr);
+    LOG_TRACE("KERNEL FAULT: faultType = %d\n", (int)info.faultType);
+    LOG_TRACE("Page Fault Handler: Hit at address 0x%x\n", info.addr);
     switch (info.faultType) {
         case FaultType::COPY_ON_WRITE: {
-            printf("Page Fault: Kernel Cannot COPY_ON_WRITE, halt\n");
-            ASSERT(0);
+            PANIC("Page Fault: Kernel Cannot COPY_ON_WRITE, halt\n");
             asm_halt();
         }
         case FaultType::DEMAND_ZERO: {
+            int paddr = 0;
             if (!memoryManager.kernelVirtual.isValidAddr(info.addr)) {
-                printf("Page Fault: DEMAND_ZERO but INVALID_ADDRESS, halt\n");
-                asm_halt();
+                // 尝试看看是否是用户VA的DEMAND_ZERO, 利用user_handler处理
+                if (handle_user_page_fault(info)) {
+                    return;
+                } else {
+                    PANIC("Page Fault: DEMAND_ZERO but INVALID_ADDRESS, halt\n");
+                    asm_halt();
+                }
+            } else {
+                paddr = memoryManager.allocatePhysicalPages(AddressPoolType::KERNEL, 1);
             }
-            int paddr = memoryManager.allocatePhysicalPages(AddressPoolType::KERNEL, 1);
             
             // Try Clock
             if (paddr == 0 && (paddr = out_of_memory(AddressPoolType::KERNEL, 1)) == 0) {
-                printf("Page Fault: DEMAND_ZERO but OUT_OF_MEMORY, halt\n");
+                PANIC("Page Fault: DEMAND_ZERO but OUT_OF_MEMORY, halt\n");
                 asm_halt();                
             } 
             uint32 vaddr = info.addr & ~0xfff;
@@ -48,8 +55,14 @@ void handle_kernel_page_fault(const PageFaultInfo& info) {
 }
 
 bool handle_user_page_fault(const PageFaultInfo& info) {
-    printf("USER FAULT: faultType = %d\n", (int)info.faultType);
-    printf("Page Fault Handler: Hit at address 0x%x\n", info.addr);
+    LOG_TRACE("USER FAULT: faultType = %d\n", (int)info.faultType);
+    LOG_TRACE("Page Fault Handler: Hit at address 0x%x\n", info.addr);
+    if (programManager.running) {
+        LOG_TRACE("[fault] pid=%d esp=0x%x eip=%x\n",
+               programManager.running->pid,
+               ((ProcessStartStack*)((uint32)programManager.running + PAGE_SIZE - sizeof(ProcessStartStack)))->esp,
+               ((ProcessStartStack*)((uint32)programManager.running + PAGE_SIZE - sizeof(ProcessStartStack)))->eip);
+    }
 
     if (!programManager.running) return false;
     UserVAddressPool& userVirtual = programManager.running->userVirtual;
@@ -57,10 +70,10 @@ bool handle_user_page_fault(const PageFaultInfo& info) {
 
     switch (info.faultType) {
         case FaultType::COPY_ON_WRITE: {
-            printf("Page Fault: COPY_ON_WRITE start\n");
+            LOG_TRACE("Page Fault: COPY_ON_WRITE start\n");
             UserSegment userSegment = userVirtual.vaddr2Seg(info.addr);
             if (userSegment == UserSegment::EMPTY) {
-                printf("Page Fault: COPY_ON_WRITE but INVALID_ADDRESS, return false\n");
+                LOG_ERROR("Page Fault: COPY_ON_WRITE but INVALID_ADDRESS, return false\n");
                 return false;
             }
 
@@ -69,7 +82,8 @@ bool handle_user_page_fault(const PageFaultInfo& info) {
             uint32 paddr = (*PTEptr) & PTE_GET_ADDRESS;
             uint32 ref = memoryManager.pageinfos[PA2PGI(paddr)].getRef();
             if (ref == 0) {
-                printf("Page Fault: COPY_ON_WRITE but invalid pageinfo ref, return false\n");
+                LOG_ERROR("[COW] ref=0 error, vaddr=0x%x\n", vaddr);
+                LOG_ERROR("Page Fault: COPY_ON_WRITE but invalid pageinfo ref, return false\n");
                 return false;
             } else if (ref == 1) {
                 // 填入对应的vaddr, 清除PTE_COW, 改为可写, 刷新TLB
@@ -77,12 +91,15 @@ bool handle_user_page_fault(const PageFaultInfo& info) {
                 uint32 idx = memoryManager.pageinfos[PA2PGI(paddr)].extra;
                 memoryManager.rmapManager.RMapStart[idx].pte_vaddr = (uint32)PTEptr;
                 asm_invlpg((void*)vaddr);
+                LOG_TRACE("[COW] ref=1 fast-path pid=%d vaddr=0x%x paddr=0x%x\n",
+                       owner, vaddr, paddr);
+                return true;
             } else {
                 int new_paddr = memoryManager.allocatePhysicalPages(AddressPoolType::USER, 1);
                 
                 // Try Clock
                 if (new_paddr == 0 && (new_paddr = out_of_memory(AddressPoolType::USER, 1)) == 0) {
-                    printf("Page Fault: COPY_ON_WRITE but OUT_OF_MEMORY, return false\n");
+                    LOG_ERROR("Page Fault: COPY_ON_WRITE but OUT_OF_MEMORY, return false\n");
                     return false;                
                 } 
 
@@ -101,26 +118,28 @@ bool handle_user_page_fault(const PageFaultInfo& info) {
                 void* src = (void*)memoryManager.mapTemp(AddressPoolType::KERNEL, paddr);
                 void* dst = (void*)vaddr;
                 if (src == 0) {
-                    printf("Page Fault: COPY_ON_WRITE but mapTemp fail, return false\n");
+                    LOG_ERROR("Page Fault: COPY_ON_WRITE but mapTemp fail, return false\n");
                     return false;                         
                 }
                 memcpy(dst, src, PAGE_SIZE);
                 memoryManager.unmapTemp(AddressPoolType::KERNEL);
 
+                LOG_TRACE("[COW] ref>=2 split pid=%d vaddr=0x%x old=0x%x new=0x%x\n",
+                       owner, vaddr, paddr, new_paddr);
                 return true;
             }
         }
         case FaultType::DEMAND_ZERO: {
             UserSegment userSegment = userVirtual.vaddr2Seg(info.addr);
             if (userSegment == UserSegment::EMPTY) {
-                printf("Page Fault: DEMAND_ZERO but INVALID_ADDRESS, return false\n");
+                LOG_ERROR("Page Fault: DEMAND_ZERO but INVALID_ADDRESS, return false\n");
                 return false;
             }
             int paddr = memoryManager.allocatePhysicalPages(AddressPoolType::USER, 1);
             
             // Try Clock
             if (paddr == 0 && (paddr = out_of_memory(AddressPoolType::USER, 1)) == 0) {
-                printf("Page Fault: DEMAND_ZERO but OUT_OF_MEMORY, return false\n");
+                LOG_ERROR("Page Fault: DEMAND_ZERO but OUT_OF_MEMORY, return false\n");
                 return false;                
             } 
             uint32 vaddr = info.addr & ~0xfff;
@@ -138,8 +157,7 @@ bool handle_user_page_fault(const PageFaultInfo& info) {
             // return true;
         }
         default: {
-            printf("fail addr: 0x%x, pid: %d\n", info.addr, programManager.running->pid);
-            ASSERT(0);
+            PANIC("fail addr: 0x%x, pid: %d\n", info.addr, programManager.running->pid);
             asm_halt();
 
         }

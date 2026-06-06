@@ -1,4 +1,5 @@
 #include "buddy.h"
+#include "debug.h"
 
 // num <= 0 返回-1
 int log2(int num) {
@@ -31,12 +32,10 @@ FreeNode* FreeNode::getTail() {
 int Buddy::insert_freeNode(int startIndex, int order) {
     FreeNode* node = malloc_freeNode();
     if (!node) {
-        printf("Error: fail to insert freeNode to order %d\n", order);
+        LOG_ERROR("Error: fail to insert freeNode to order %d\n", order);
         return -1;
     }
     // 插入新freeNode节点
-    // DEBUG:
-    // printf("insert idx = %d, order = %d\n", startIndex, order);
     node->startIndex = startIndex;
     node->order = order;
     node->next = nullptr;
@@ -235,7 +234,7 @@ void print_bitmap(char *bitmap, int count)
     for (int i = 0; i < count; i++)
     {
         int bit = (bitmap[i / 8] >> (i % 8)) & 1;
-        printf("%d", bit);
+        LOG_TRACE("%d", bit);
         if ((i + 1) % 8 == 0)
             printf(" ");
     }

@@ -9,6 +9,7 @@
 #include "tss.h"
 #include "syscall.h"
 #include "test.h"
+#include "debug.h"
 
 // 屏幕IO处理器
 STDIO stdio;
@@ -95,7 +96,15 @@ void idle_thread(void* arg) {
     // programManager.executeProcess((const char *)COW_writer, 1, 1);
     // programManager.executeProcess((const char *)COW_reader, 1, 1);
     printf("Load Done\n");
-    asm_halt();
+    uint32 count = 0;
+    while (1) {
+        count++;
+        if (count == 100000000) {
+            LOG_TRACE("idling\n");
+            count = 0;
+        }
+        ;
+    }
     // int pid = programManager.executeThread(test_lazy_alloc_thread, nullptr, "test_lazy_alloc_thread", 1);
     // if (pid == -1)
     // {

@@ -6,6 +6,7 @@
 #include "program.h"
 #include "os_modules.h"
 #include "assert.h"
+#include "debug.h"
 
 MemoryManager::MemoryManager()
 {
@@ -14,8 +15,7 @@ MemoryManager::MemoryManager()
 
 void MemoryManager::initialize()
 {
-    // DEBUG:
-    printf("CALL\n");
+    LOG_TRACE("CALL\n");
     this->totalMemory = 0;
     this->totalMemory = getTotalMemory();
 
@@ -24,7 +24,7 @@ void MemoryManager::initialize()
     int usedMemory = RESERVED_MEMORY;
     if (this->totalMemory < usedMemory)
     {
-        printf("memory is too small, halt.\n");
+        LOG_ERROR("memory is too small, halt.\n");
         asm_halt();
     }
     
@@ -266,16 +266,6 @@ void MemoryManager::initialize()
     printf("PageInfo\n"
             "   start address: 0x%x\n",
             (int)pageinfos);
-    // printf("0x%x\n", vaddr2paddr(0xC02C0000));
-    // printf("0x100000 %x ;", *(int*) toPDE(0x100000));
-    // // 获取0x100000对应的PTE信息,储存在0x101000 + 4 * 256
-    // printf("0x101400 %x\n", *(int*) toPTE(0x100000));
-
-    // printf("Try to access 0x101000\n");
-    // int value1 = *(int*) 0x101000;
-    // printf("value = %d\n", value1);
-    // *(int*) 0x101000 = 114514;
-    // printf("after value = %d\n", *(int*) 0x101000);
 }
 
 int MemoryManager::allocatePhysicalPages(enum AddressPoolType type, const int count)
@@ -292,11 +282,9 @@ int MemoryManager::allocatePhysicalPages(enum AddressPoolType type, const int co
         start = userPhysical.allocate(count);
     }
 
-    // printf("start: %d\n", start);
     if (start == -1) return 0;
 
     int pgi = PA2PGI(start);
-    // printf("pgi: %d\n", pgi);
     for (int i = 0; i < count; i++) {
         ASSERT(pageinfos[pgi+i].hasFlag(PG_FREE));
         pageinfos[pgi+i].clear();
@@ -372,8 +360,6 @@ int MemoryManager::allocatePages(enum AddressPoolType type, const int count, con
         physicalPageAddress = allocatePhysicalPages(type, 1);
         if (physicalPageAddress)
         {
-            //printf("allocate physical page 0x%x\n", physicalPageAddress);
-
             // 第三步：为虚拟页建立页目录项和页表项，使虚拟页内的地址经过分页机制变换到物理页内。
             flag = connectPhysicalVirtualPage(vaddress, physicalPageAddress);
         }
@@ -461,8 +447,8 @@ bool MemoryManager::connectPhysicalVirtualPage(const int virtualAddress, const i
     uint32 pte_pa = toPTEpa(virtualAddress);
     ASSERT(rmapManager.attach(&pageinfos[PA2PGI(physicalPageAddress)], pte_pa, (uint32)pte, owner) != -1);
     // DEBUG:
-    // printf("bind VA=0x%x to PA=0x%x\n", virtualAddress, physicalPageAddress);
-    // pageinfos[PA2PGI(physicalPageAddress)].dump();
+    LOG_TRACE("bind VA=0x%x to PA=0x%x\n", virtualAddress, physicalPageAddress);
+                pageinfos[PA2PGI(physicalPageAddress)].dump();
     return true;
 }
 
@@ -505,7 +491,7 @@ void MemoryManager::releasePages(enum AddressPoolType type, const int virtualAdd
         int paddr = vaddr2paddr(vaddr);
         int owner = programManager.running ? programManager.running->pid : 0;
         // DEBUG:
-        printf("try Free VA=0x%x, PA=0x%x\n", vaddr, paddr);
+        LOG_TRACE("try Free VA=0x%x, PA=0x%x\n", vaddr, paddr);
         pageinfos[PA2PGI(paddr)].dump();
         uint32 pte_pa = toPTEpa(vaddr);
         // 解除rmap绑定
@@ -515,7 +501,7 @@ void MemoryManager::releasePages(enum AddressPoolType type, const int virtualAdd
         if (pageinfos[PA2PGI(paddr)].getRef() == 0) {
             releasePhysicalPages(type, paddr, 1);
             // DEBUG:
-            printf("Free VA=0x%x, PA=0x%x\n", vaddr, paddr);
+            LOG_TRACE("Free VA=0x%x, PA=0x%x\n", vaddr, paddr);
         }
 
         // 设置页表项为不存在，防止释放后被再次使用
@@ -654,5 +640,8 @@ void MemoryManager::unmapTemp(enum AddressPoolType type) {
 }
 
 bool MemoryManager::setCOW(PageInfo* pi) {
-    return rmapManager.setCOW(pi);
+    bool res = rmapManager.setCOW(pi);
+    LOG_TRACE("[setCOW] pgi=%u res=%d ref=%u extra=%u flags=0x%x\n",
+           (unsigned) (pi - pageinfos), (int)res, pi->getRef(), pi->extra, (unsigned)pi->flags);
+    return res;
 }

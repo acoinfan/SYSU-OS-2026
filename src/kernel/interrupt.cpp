@@ -7,6 +7,7 @@
 #include "program.h"
 #include "handler.h"
 #include "pageinfo.h"
+#include "debug.h"
 
 int times = 0;
 extern "C" void c_page_fault_handler(uint32 error_code)
@@ -18,8 +19,8 @@ extern "C" void c_page_fault_handler(uint32 error_code)
     uint32 PTE = 0;
     if (!(PDE & PTE_PRESENT)) {
         faultType = FaultType::PAGE_TABLE_BROKEN;
-        printf("Page Fault: PAGE_TABLE_BROKEN, halt\n");
-        printf("broken addr: 0x%x, pid: %d\n", addr, programManager.running->pid);
+        PANIC("Page Fault: PAGE_TABLE_BROKEN, halt\n"
+              "broken addr: 0x%x, pid: %d\n", addr, programManager.running->pid);
         asm_halt();
     } else {
         PTE = *(uint32*)memoryManager.toPTE(addr);

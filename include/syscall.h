@@ -36,8 +36,8 @@ int fork();
 int syscall_fork();
 
 // 第3个系统调用, exit
-// void exit(int ret);
-// void syscall_exit(int ret);
+void exit(int ret);
+void syscall_exit(int ret);
 
 // 第4个系统调用, wait
 // int wait(int *retval);
@@ -47,4 +47,7 @@ int syscall_fork();
 void move_cursor(int i, int j);
 void syscall_move_cursor(int i, int j);
 
+void halt();
+
+void syscall_halt();
 #endif

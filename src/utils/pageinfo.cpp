@@ -1,6 +1,7 @@
 #include "pageinfo.h"
 #include "assert.h"
 #include "stdio.h"
+#include "debug.h"
 
 uint16 PageInfo::incRef(void) {
     ASSERT(ref < 0xFFFF);
@@ -37,7 +38,7 @@ bool PageInfo::hasFlag(PageFlags flag) const {
 }
 
 void PageInfo::dump(void) const {
-    printf("PageInfo debug: at address 0x%x\n"
+    LOG_TRACE("PageInfo debug: at address 0x%x\n"
             "ref = %x\n"
             "flags = %x\n"
             "extra = %x\n",

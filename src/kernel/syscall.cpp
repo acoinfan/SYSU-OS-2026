@@ -5,6 +5,7 @@
 #include "os_modules.h"
 #include "stdio.h"
 #include "thread.h"
+#include "debug.h"
 
 int system_call_table[MAX_SYSTEM_CALL];
 
@@ -16,10 +17,11 @@ void SystemService::initialize()
     setSystemCall(SyscallType::SYSCALL_0, (int)syscall_0);
     setSystemCall(SyscallType::WRITE, (int)syscall_write);
     setSystemCall(SyscallType::FORK, (int)syscall_fork);
-    // setSystemCall(SyscallType::EXIT, (int)syscall_exit);
+    setSystemCall(SyscallType::EXIT, (int)syscall_exit);
     // setSystemCall(SyscallType::WAIT, (int)syscall_wait);
     setSystemCall(SyscallType::MOVE_CURSOR, (int)syscall_move_cursor);
     setSystemCall(SyscallType::PTE_DUMP, (int)syscall_dump_pte);
+    setSystemCall(10, (int)syscall_halt);
 }
 
 bool SystemService::setSystemCall(int index, int function)
@@ -61,11 +63,11 @@ int syscall_dump_pte(uint32 vaddr)
     uint32* pde = (uint32*)memoryManager.toPDE(vaddr);
     uint32 pde_val = *pde;
 
-    printf("[sys_dump_pte] pid=%d vaddr=0x%x PDE=0x%x\n",
+    LOG_TRACE("[sys_dump_pte] pid=%d vaddr=0x%x PDE=0x%x\n",
            cur->pid, vaddr, pde_val);
 
     if (!(pde_val & PTE_PRESENT)) {
-        printf("  PDE not present.\n");
+        LOG_ERROR("  PDE not present.\n");
         return 0;
     }
 
@@ -74,13 +76,13 @@ int syscall_dump_pte(uint32 vaddr)
     // 临时映射这张页表
     uint32 tmp = memoryManager.mapTemp(AddressPoolType::KERNEL, pte_pa_base);
     if (!tmp) {
-        printf("  mapTemp failed.\n");
+        LOG_ERROR("  mapTemp failed.\n");
         return -1;
     }
     uint32 pte_idx = (vaddr >> 12) & 0x3FF;
     uint32* pte = (uint32*)(tmp + (pte_idx << 2));
 
-    printf("  PTE[%u]=0x%x\n", pte_idx, *pte);
+    LOG_TRACE("  PTE[%u]=0x%x\n", pte_idx, *pte);
     uint32 paddr = *pte & PTE_GET_ADDRESS;
     memoryManager.pageinfos[PA2PGI(paddr)].dump();
     memoryManager.unmapTemp(AddressPoolType::KERNEL);
@@ -103,13 +105,13 @@ int syscall_fork() {
     return programManager.fork();
 }
 
-// void exit(int ret) {
-//     asm_system_call(3, ret);
-// }
+void exit(int ret) {
+    asm_system_call(3, ret);
+}
 
-// void syscall_exit(int ret) {
-//     programManager.exit(ret);
-// }
+void syscall_exit(int ret) {
+    programManager.exit(ret);
+}
 
 // int wait(int *retval) {
 //     return asm_system_call(4, (int)retval);
@@ -124,4 +126,12 @@ void move_cursor(int i, int j) {
 }
 void syscall_move_cursor(int i, int j) {
     stdio.moveCursor(i, j);
+}
+
+void halt() {
+    asm_system_call(10);
+}
+
+void syscall_halt() {
+    asm_halt();
 }

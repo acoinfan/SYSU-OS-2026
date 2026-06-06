@@ -3,6 +3,7 @@
 #include "os_constant.h"
 #include "asm_utils.h"
 #include "syscall.h"
+#include "stdio.h"
 
 void test_out_of_memory(void* arg) {
     printf("Out Of Memory Begin\n");
@@ -84,6 +85,13 @@ void COW_reader() {
 
 void fork_test() {
     int pid = fork();
+    write("[fork_test] fork returned\n");
+    int cur_pid = programManager.running ? programManager.running->pid : -1;
+    char buf[64];
+    char pidMsg[64];
+    // snprintf 在我们的 mini stdio 中对应 print 类函数
+    // sprintf(pidMsg, "[fork_test] running pid=%d fork_ret=%d\n", cur_pid, pid);
+    write(pidMsg);
 
     if (pid == -1)
     {
@@ -93,18 +101,22 @@ void fork_test() {
     {
         if (pid)
         {
-            write("I am father, fork return: ");
+            char str[30] = "I am father, fork return: ";
+            str[27] = (char) (pid + '0');
+            str[28] = '\0';
+            write(str);
         }
         else
         {
-            write("I am child, fork return: ");            
+            char str[30] = "I am child, fork return: ";
+            str[27] = (char) (pid + '0');
+            str[28] - '\n';
+            write(str);
             // write("I am child, fork return: %d, my pid: %d\n", pid, 
             //        programManager.running->pid);
         }
     }
-    while(1) {
-        ; // 未实现return
-    }
+    return;
 }
 
 void stack_test() {
@@ -114,4 +126,5 @@ void stack_test() {
         buf[i] = i % 26;
 
     write("done\n");
+    return;
 }
