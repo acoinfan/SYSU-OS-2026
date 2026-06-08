@@ -306,7 +306,7 @@ int ProgramManager::executeProcess(const char *filename, int priority, int mode)
     PCB *process = ListItem2PCB(allPrograms.back(), tagInAllList);
 
     // 创建进程的页目录表
-    process->pageDirectoryAddress = createProcessPageDirectory();
+    process->pageDirectoryAddress = createProcessPageDirectory(process->pid);
     if (!process->pageDirectoryAddress)
     {
         process->status = ProgramStatus::DEAD;
@@ -330,10 +330,10 @@ int ProgramManager::executeProcess(const char *filename, int priority, int mode)
     return pid;
 }
 
-int ProgramManager::createProcessPageDirectory()
+int ProgramManager::createProcessPageDirectory(uint32 owner)
 {
     // 从内核地址池中分配一页存储用户进程的页目录表
-    int vaddr = memoryManager.allocatePages(AddressPoolType::KERNEL, 1, VP_RW);
+    int vaddr = memoryManager.allocatePageDirTable(owner);
     if (!vaddr)
     {
         LOG_ERROR("can not create page from kernel\n");
@@ -426,7 +426,7 @@ bool ProgramManager::createUserVirtualPool(PCB *process, const ELFConfig& elfCon
         // LOAD FUNC
         // initialize userVA
         bool initRes = process->userVirtual.initialize(segBoundary, heapConf, stackConf,
-                                    mmapConf, TLSConf);
+                                    mmapConf, TLSConf, process->pid);
         if (!initRes) return false;
 
         // copy on write: .text
@@ -439,6 +439,10 @@ bool ProgramManager::createUserVirtualPool(PCB *process, const ELFConfig& elfCon
         uint32 total_pages = total_bytes / PAGE_SIZE;
         // 遍历涉及的PTE和物理页, 同时设置cow
         bool res = setupCOWPages(pgdir, paddrStart, vaddrStart, total_pages, owner);
+        if (!res) {
+            // 回收userVirtual
+            process->userVirtual.destroy();
+        }
         return res;
     } else {
         ASSERT(0);
@@ -696,7 +700,7 @@ int ProgramManager::fork()
     PCB *process = ListItem2PCB(allPrograms.back(), tagInAllList);
 
     // 创建进程的页目录表
-    process->pageDirectoryAddress = createProcessPageDirectory();
+    process->pageDirectoryAddress = createProcessPageDirectory(process->pid);
 
     if (!process->pageDirectoryAddress)
     {
@@ -706,7 +710,7 @@ int ProgramManager::fork()
     }
 
     // 复制进程的虚拟地址池
-    bool res = process->userVirtual.cloneFrom(parent->userVirtual);
+    bool res = process->userVirtual.cloneFrom(parent->userVirtual, process->pid);
 
     ASSERT(process->userVirtual.stackPool.length);
     if (!res)
@@ -717,14 +721,14 @@ int ProgramManager::fork()
     }
 
     // 初始化子进程
-    PCB *child = ListItem2PCB(this->allPrograms.back(), tagInAllList);
-    bool flag = copyProcess(parent, child);
+    bool flag = copyProcess(parent, process);
 
     if (!flag)
     {
-        child->status = ProgramStatus::DEAD;
+        process->status = ProgramStatus::DEAD;
         interruptManager.setInterruptStatus(status);
-        // TODO: 记得回收Process
+        // 回收UserVirtual
+        process->userVirtual.destroy();
         return -1;
     }
 
@@ -805,8 +809,38 @@ void ProgramManager::exit(int ret)
     LOG_TRACE("call exit\n");
     // 第二步，如果PCB标识的是进程，则释放进程所占用的物理页、页表、页目录表和虚拟地址池bitmap的空间。
     if (program->pageDirectoryAddress) {
-        // 用一个无效地址debug
-        program->pageDirectoryAddress = 0xffff;
+        // 释放页表和物理页
+        // TODO
+        const UserVAddressPool& userVAPool = programManager.running->userVirtual;
+        memoryManager.releasePages(AddressPoolType::USER, userVAPool.segBoundary.text.start, 
+                                    (userVAPool.segBoundary.text.end - userVAPool.segBoundary.text.start + 1) / PAGE_SIZE,
+                                    UserSegment::TEXT);
+        memoryManager.releasePages(AddressPoolType::USER, userVAPool.segBoundary.data.start, 
+                                    (userVAPool.segBoundary.data.end - userVAPool.segBoundary.data.start + 1) / PAGE_SIZE,
+                                    UserSegment::DATA);
+        memoryManager.releasePages(AddressPoolType::USER, userVAPool.segBoundary.bss.start, 
+                                    (userVAPool.segBoundary.bss.end - userVAPool.segBoundary.bss.start + 1) / PAGE_SIZE,
+                                    UserSegment::BSS);                                         
+        memoryManager.releasePages(AddressPoolType::USER, userVAPool.heapPool.startAddress, 
+                                    userVAPool.heapPool.length, UserSegment::HEAP);
+        memoryManager.releasePages(AddressPoolType::USER, userVAPool.stackPool.startAddress, 
+                                    userVAPool.stackPool.length, UserSegment::STACK);
+        memoryManager.releasePages(AddressPoolType::USER, userVAPool.mmapPool.startAddress, 
+                                    userVAPool.mmapPool.length, UserSegment::MMAP);    
+        memoryManager.releasePages(AddressPoolType::USER, userVAPool.TLSPool.startAddress, 
+                                    userVAPool.TLSPool.length, UserSegment::TLS);
+
+        for (uint32 vaddr = 0; vaddr <= USER_VADDR_END; vaddr += PAGE_SIZE * PAGE_SIZE) {
+            uint32 PDEptr = memoryManager.toPDE(vaddr);
+            if (*(uint32*)PDEptr & PDE_PRESENT) {
+                memoryManager.releasePageTable(PDEptr);
+            }
+        }
+        // 释放页目录表
+        memoryManager.releasePageDirTable(program->pageDirectoryAddress);
+        
+        // 释放BitMap
+        programManager.running->userVirtual.destroy();
     }
 
     // 第三步，立即执行线程/进程调度。

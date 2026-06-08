@@ -91,7 +91,14 @@ void first_thread(void *arg)
 
 void idle_thread(void* arg) {
     printf("start process\n");
+    printf("BEFORE: kernel - User Physical\n");
+    memoryManager.kernelPhysical.dump();
+    memoryManager.userPhysical.dump();
+
     programManager.executeProcess((const char *)fork_test, 1, 1);
+    printf("AFTER: kernel - User Physical\n");
+    memoryManager.kernelPhysical.dump();
+    memoryManager.userPhysical.dump();
     // programManager.executeProcess((const char *)stack_test, 1, 1);
     // programManager.executeProcess((const char *)COW_writer, 1, 1);
     // programManager.executeProcess((const char *)COW_reader, 1, 1);
@@ -100,7 +107,7 @@ void idle_thread(void* arg) {
     while (1) {
         count++;
         if (count == 100000000) {
-            LOG_TRACE("idling\n");
+            printf("idling\n");
             count = 0;
         }
         ;

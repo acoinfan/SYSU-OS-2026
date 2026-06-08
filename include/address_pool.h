@@ -121,6 +121,7 @@ public:
     VAddressPool TLSPool;
     uint32 bitmapStart, privStart;
     uint32 bitmapPage, privPage;
+    uint32 owner;
     bool isInitialized = false;
 public:
     UserVAddressPool() {}
@@ -134,11 +135,11 @@ public:
     // [RAII]初始化地址池, 无需自己分配bitmap和privileges
     bool initialize(const struct SegBoundary& segBoundary, 
                     const VAPConfigLite& heapConf, const VAPConfigLite& stackConf,
-                    const VAPConfigLite& mmapConf, const VAPConfigLite& TLSConf);
+                    const VAPConfigLite& mmapConf, const VAPConfigLite& TLSConf, uint32 owner);
 
 
     // [RAII]fork初始化地址池, 无需分配Bitmap和privileges
-    bool cloneFrom(const UserVAddressPool& parent);
+    bool cloneFrom(const UserVAddressPool& parent, uint32 owner);
     
     void destroy();
 
@@ -173,6 +174,9 @@ public:
     void release(const uint32 address, const int amount);
 
     VictimInfo findVictim(uint32 search_length=0, uint32 round=2);
+
+    // 统计空间
+    void dump() const;
 };
 
 typedef VAddressPool KernelVAddressPool;

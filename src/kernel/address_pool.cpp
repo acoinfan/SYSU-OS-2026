@@ -186,6 +186,17 @@ VictimInfo PAddressPool::findVictim(uint32 search_length, uint32 round)
     return {0, 0};
 }
 
+void PAddressPool::dump() const {
+    uint32 freePages = 0;
+    for (int order = 0; order < MAX_ORDER + 1; order++) {
+        FreeNode* cnt = resources.freeArea[order];
+        while (cnt) {
+            freePages += (1 << order);
+            cnt = cnt->next;
+        }
+    }
+    printf("total Avail Pages: %d\n", freePages);
+}
 // void UserVAddressPool::initialize(const struct SegBoundary& segBoundary, 
 //                         const VAPConfig& heapConf, const VAPConfig& stackConf,
 //                         const VAPConfig& mmapConf, const VAPConfig& TLSConf) {
@@ -203,9 +214,9 @@ VictimInfo PAddressPool::findVictim(uint32 search_length, uint32 round)
 
 bool UserVAddressPool::initialize(const struct SegBoundary& segBoundary, 
                         const VAPConfigLite& heapConf, const VAPConfigLite& stackConf,
-                        const VAPConfigLite& mmapConf, const VAPConfigLite& TLSConf) {
+                        const VAPConfigLite& mmapConf, const VAPConfigLite& TLSConf, uint32 owner) {
     ASSERT(!this->isInitialized);
-
+    this->owner = owner;
     uint32 heapBitmapBytes = ceil(heapConf.length, 8);
     uint32 stackBitmapBytes = ceil(stackConf.length, 8);
     uint32 tlsBitmapBytes = ceil(TLSConf.length, 8);
@@ -224,6 +235,21 @@ bool UserVAddressPool::initialize(const struct SegBoundary& segBoundary,
         memoryManager.releasePages(AddressPoolType::KERNEL, bitmapStart, totalBitmapBytes / PAGE_SIZE);
         memoryManager.releasePages(AddressPoolType::KERNEL, privStart, totalPrivBytes / PAGE_SIZE);
         return false;
+    }
+
+    // Update Owner
+    for (uint32 vaddr = bitmapStart; vaddr < bitmapStart + totalBitmapBytes; vaddr += PAGE_SIZE) {
+        uint32 paddr = memoryManager.vaddr2paddr(vaddr);
+        uint32 pte_paddr = memoryManager.toPTEpa(vaddr), pte_vaddr = memoryManager.toPTE(vaddr);
+        memoryManager.rmapManager.detach(&memoryManager.pageinfos[PA2PGI(paddr)], pte_paddr, 0, programManager.running->pid);
+        memoryManager.rmapManager.attach(&memoryManager.pageinfos[PA2PGI(paddr)], pte_paddr, pte_vaddr, owner);
+    }
+
+    for (uint32 vaddr = privStart; vaddr < privStart + totalPrivBytes; vaddr += PAGE_SIZE) {
+        uint32 paddr = memoryManager.vaddr2paddr(vaddr);
+        uint32 pte_paddr = memoryManager.toPTEpa(vaddr), pte_vaddr = memoryManager.toPTE(vaddr);
+        memoryManager.rmapManager.detach(&memoryManager.pageinfos[PA2PGI(paddr)], pte_paddr, 0, programManager.running->pid);
+        memoryManager.rmapManager.attach(&memoryManager.pageinfos[PA2PGI(paddr)], pte_paddr, pte_vaddr, owner);
     }
 
     // Clear Space
@@ -269,10 +295,10 @@ bool UserVAddressPool::initialize(const struct SegBoundary& segBoundary,
     return true;
 }
 
-bool UserVAddressPool::cloneFrom(const UserVAddressPool& parent) {
+bool UserVAddressPool::cloneFrom(const UserVAddressPool& parent, uint32 owner) {
     ASSERT(!this->isInitialized);
+    this->owner = owner;
     if (!parent.isInitialized) return false;
-    
     // Calculate Size
     uint32 heapBitmapBytes = ceil(parent.heapPool.length, 8);
     uint32 stackBitmapBytes = ceil(parent.stackPool.length, 8);
@@ -292,6 +318,21 @@ bool UserVAddressPool::cloneFrom(const UserVAddressPool& parent) {
         memoryManager.releasePages(AddressPoolType::KERNEL, bitmapStart, totalBitmapBytes / PAGE_SIZE);
         memoryManager.releasePages(AddressPoolType::KERNEL, privStart, totalPrivBytes / PAGE_SIZE);
         return false;
+    }
+
+    // Update Owner
+    for (uint32 vaddr = bitmapStart; vaddr < bitmapStart + totalBitmapBytes; vaddr += PAGE_SIZE) {
+        uint32 paddr = memoryManager.vaddr2paddr(vaddr);
+        uint32 pte_paddr = memoryManager.toPTEpa(vaddr), pte_vaddr = memoryManager.toPTE(vaddr);
+        memoryManager.rmapManager.detach(&memoryManager.pageinfos[PA2PGI(paddr)], pte_paddr, 0, programManager.running->pid);
+        memoryManager.rmapManager.attach(&memoryManager.pageinfos[PA2PGI(paddr)], pte_paddr, pte_vaddr, owner);
+    }
+
+    for (uint32 vaddr = privStart; vaddr < privStart + totalPrivBytes; vaddr += PAGE_SIZE) {
+        uint32 paddr = memoryManager.vaddr2paddr(vaddr);
+        uint32 pte_paddr = memoryManager.toPTEpa(vaddr), pte_vaddr = memoryManager.toPTE(vaddr);
+        memoryManager.rmapManager.detach(&memoryManager.pageinfos[PA2PGI(paddr)], pte_paddr, 0, programManager.running->pid);
+        memoryManager.rmapManager.attach(&memoryManager.pageinfos[PA2PGI(paddr)], pte_paddr, pte_vaddr, owner);
     }
 
     // Calculatie Ptr
@@ -325,7 +366,7 @@ bool UserVAddressPool::cloneFrom(const UserVAddressPool& parent) {
     this->bitmapPage = totalBitmapBytes / PAGE_SIZE;
     this->privStart = privStart;
     this->privPage = totalPrivBytes / PAGE_SIZE;
-    
+
     ASSERT(heapPool.isStatic && stackPool.isStatic);
     ASSERT(heapPool.getVPageFlag(0) == (VP_RW|VP_USER));
     ASSERT(stackPool.getVPageFlag(0) == (VP_RW|VP_USER));
@@ -353,8 +394,25 @@ bool UserVAddressPool::cloneFrom(const UserVAddressPool& parent) {
 }
 
 void UserVAddressPool::destroy() {
-    memoryManager.releasePages(AddressPoolType::KERNEL, bitmapStart, bitmapPage);
-    memoryManager.releasePages(AddressPoolType::KERNEL, privStart, privPage);
+    if (programManager.running->pid == owner) {
+        memoryManager.releasePages(AddressPoolType::KERNEL, bitmapStart, bitmapPage);
+        memoryManager.releasePages(AddressPoolType::KERNEL, privStart, privPage);
+    } else {
+        // 映射回去释放
+        for (uint32 vaddr = bitmapStart, i = 0; i < bitmapPage; vaddr += PAGE_SIZE, i++) {
+            uint32 paddr = memoryManager.vaddr2paddr(vaddr);
+            uint32 pte_paddr = memoryManager.toPTEpa(vaddr), pte_vaddr = memoryManager.toPTE(vaddr);
+            memoryManager.rmapManager.detach(&memoryManager.pageinfos[PA2PGI(paddr)], pte_paddr, 0, owner);
+            memoryManager.rmapManager.attach(&memoryManager.pageinfos[PA2PGI(paddr)], pte_paddr, pte_vaddr, programManager.running->pid);
+        }
+
+        for (uint32 vaddr = privStart, i = 0; i < privPage; vaddr += PAGE_SIZE, i++) {
+            uint32 paddr = memoryManager.vaddr2paddr(vaddr);
+            uint32 pte_paddr = memoryManager.toPTEpa(vaddr), pte_vaddr = memoryManager.toPTE(vaddr);
+            memoryManager.rmapManager.detach(&memoryManager.pageinfos[PA2PGI(paddr)], pte_paddr, 0, owner);
+            memoryManager.rmapManager.attach(&memoryManager.pageinfos[PA2PGI(paddr)], pte_paddr, pte_vaddr, programManager.running->pid);
+        }        
+    }
 }
 
 // 成功则返回第一个页的地址，失败则返回-1

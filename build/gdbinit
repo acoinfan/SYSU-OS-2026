@@ -19,7 +19,6 @@ set pagination off
 # c
 # b ProgramManager::fork
 # b ProgramManager::executeProcess
-b ProgramManager::copyProcess
-b asm_start_process if *(int*)($esp + 4) == 0xc003d108
+b ProgramManager::exit
 c
 layout src

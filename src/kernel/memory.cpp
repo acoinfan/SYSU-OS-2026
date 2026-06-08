@@ -307,7 +307,6 @@ void MemoryManager::releasePhysicalPages(enum AddressPoolType type, const int pa
     }
     else if (type == AddressPoolType::USER)
     {
-
         userPhysical.release(paddr, count);
     }
     int pgi = PA2PGI(paddr);
@@ -494,10 +493,15 @@ int MemoryManager::toPTEpa(const int vaddr)
 void MemoryManager::releasePages(enum AddressPoolType type, const int virtualAddress, const int count, UserSegment userSegment)
 {
     int vaddr = virtualAddress;
-    int *pte;
+    int *pte, *pde;
     for (int i = 0; i < count; ++i, vaddr += PAGE_SIZE)
     {
         // 第一步，对每一个虚拟页，释放为其分配的物理页
+        pde = (int *)toPDE(vaddr);
+        // 不存在PDE, 跳过
+        if (!((*pde)) & PDE_PRESENT) {
+            continue;
+        }
         pte = (int *)toPTE(vaddr);
         // 若不存在PTE, 跳过释放
         if (!((*pte) & PTE_PRESENT)) {
@@ -532,8 +536,8 @@ void MemoryManager::releasePages(enum AddressPoolType type, const int virtualAdd
         uint32 pde = toPDE(vaddr);
         if (PDEdec(pde)) {
             releasePageTable(pde);
-            // DEBUG:
-            printf("release PageTable\n");
+            *(uint32*)pde = 0;
+            LOG_TRACE("release PageTable\n");
         }
     }
 
@@ -684,6 +688,26 @@ int MemoryManager::allocatePageTable() {
     }
 }
 
+int MemoryManager::allocatePageDirTable(uint32 owner) {
+    int vaddr = allocatePages(AddressPoolType::KERNEL, 1, VP_RW);
+    if (!vaddr) return 0;
+    int page = vaddr2paddr(vaddr);
+    // 将链接绑在自己的pid
+    ASSERT(rmapManager.detach(&pageinfos[PA2PGI(page)], toPTEpa(vaddr), 0, programManager.running->pid));
+    rmapManager.attach(&pageinfos[PA2PGI(page)], toPTEpa(vaddr), toPTE(vaddr), owner);
+    pageinfos[PA2PGI(page)].setFlag(PG_KERNEL | PG_LOCKED);
+    return vaddr;    
+}
+
+void MemoryManager::releasePageDirTable(uint32 pageDirAddr) {
+    uint32 page = vaddr2paddr(pageDirAddr);
+    ASSERT(pageinfos[PA2PGI(page)].hasFlag(PG_KERNEL));
+    ASSERT(pageinfos[PA2PGI(page)].hasFlag(PG_LOCKED));
+    ASSERT(pageinfos[PA2PGI(page)].getRef() == 1);
+    pageinfos[PA2PGI(page)].clearFlag(PG_LOCKED);
+    releasePages(AddressPoolType::KERNEL, pageDirAddr, 1);
+    return;
+}
 void MemoryManager::releasePageTable(uint32 PDEptr) {
     uint32 page = (*(uint32*)PDEptr) & PDE_GET_ADDRESS;
     ASSERT(pageinfos[PA2PGI(page)].hasFlag(PG_KERNEL));
@@ -703,9 +727,9 @@ void MemoryManager::PDEinc(uint32 PDEptr) {
 
 bool MemoryManager::PDEdec(uint32 PDEptr) {
     int count = PDE_GET_COUNT(PDEptr);
+    ASSERT(count > 0);
     if (count == 7) return false;
     count--;
-    ASSERT(count > 0);
     PDE_SET_COUNT(PDEptr, count);
     if (count == 0) return true;
     else return false;

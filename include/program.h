@@ -91,7 +91,7 @@ public:
     void switch_scheduler(SchedulerType type);
 
     // 初始化进程页目录表
-    int createProcessPageDirectory();
+    int createProcessPageDirectory(uint32 owner);
 
     // 初始化进程UserVirtualPool
     bool createUserVirtualPool(PCB *process, const ELFConfig& elfConf, int mode = 0);

@@ -91,6 +91,11 @@ public:
     int allocatePageTable(void);
 
     void releasePageTable(uint32 PDEptr);
+
+    int allocatePageDirTable(uint32 owner);
+
+    void releasePageDirTable(uint32 pageDirAddr);
+
     void PDEinc(uint32 PDEptr);
 
     // true if 0
