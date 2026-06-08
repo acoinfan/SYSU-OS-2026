@@ -91,12 +91,12 @@ void MemoryManager::initialize()
     for (int addr = RESERVED_MEMORY; addr < PTE_table_start; 
             addr += PAGE_SIZE, kernelVirtualStartAddress += PAGE_SIZE) {
         int* pde = (int*)toPDE(kernelVirtualStartAddress);
-        if(!(*pde & 0x00000001)) {
+        if(!(*pde & PDE_PRESENT)) {
             int PDEidx = (kernelVirtualStartAddress >> 22) & 0x3ff;
             ASSERT(PDEidx >= 768 && PDEidx < 1024);
             int PTE_table_PAddr = (PTE_table_start + PAGE_SIZE * (PDEidx - 768));
             ASSERT(PTE_table_PAddr % PAGE_SIZE == 0);
-            *pde = PTE_table_PAddr | 0x7;
+            *pde = PTE_table_PAddr | PDE_KERNEL;
             
             // 清零PDE指向的页表
             int *pte_clear = (int*)toPTE(kernelVirtualStartAddress);
@@ -405,20 +405,36 @@ bool MemoryManager::connectPhysicalVirtualPage(const int virtualAddress, const i
     int *pde = (int *)toPDE(virtualAddress);
     int *pte = (int *)toPTE(virtualAddress);
     // 页目录项无对应的页表，先分配一个页表
-    if(!(*pde & 0x00000001)) 
+    if(!(*pde & PDE_PRESENT)) 
     {
         // 从内核物理地址空间中分配一个页表
-        int page = allocatePhysicalPages(AddressPoolType::KERNEL, 1);
-        if (!page)
+        int page = allocatePageTable();
+        if (!page) {
             return false;
-        else {
-            pageinfos[PA2PGI(page)].clear();
-            pageinfos[PA2PGI(page)].incRef();
-            pageinfos[PA2PGI(page)].setFlag(PG_KERNEL | PG_LOCKED);
-        }
-        // 使页目录项指向页表, 同时设置权限位
+        } 
 
-        *pde = page | 0x7;
+        // 判断地址归属
+        AddressPoolType type;
+        if (kernelVirtual.isValidAddr(virtualAddress)) {
+            type = AddressPoolType::KERNEL;
+        } else if (programManager.running->userVirtual.vaddr2Seg(virtualAddress) != UserSegment::EMPTY) {
+            type = AddressPoolType::USER;
+        } else {
+            PANIC("Invalid Virtual Address\n");
+        }
+
+        // 使页目录项指向页表, 同时设置权限位
+        switch (type) {
+            case AddressPoolType::KERNEL:
+                *pde = page | PDE_KERNEL;
+                break;
+            case AddressPoolType::USER:
+                *pde = page | PDE_USER;
+                break;
+            default:
+                PANIC("Invalid Type\n");
+        }
+
         // 初始化页表
         char *pagePtr = (char *)(((int)pte) & 0xfffff000);
         memset(pagePtr, 0, PAGE_SIZE);
@@ -438,7 +454,10 @@ bool MemoryManager::connectPhysicalVirtualPage(const int virtualAddress, const i
     } else { 
         ASSERT(0);
     }
+    // 修改PTE, 增加PDE count
     *pte = physicalPageAddress | pteFlag | PTE_PRESENT;
+    PDEinc((uint32)pde);
+
     // 刷新TLB
     asm_invlpg((void*)virtualAddress);
 
@@ -509,7 +528,13 @@ void MemoryManager::releasePages(enum AddressPoolType type, const int virtualAdd
         // 刷新TLB
         asm_invlpg((void*)vaddr);
         
-        // TODO: 分析页表是否可以被释放, 如果释放记得减小ref
+        // 分析页表是否可以被释放, 如果释放记得减小ref
+        uint32 pde = toPDE(vaddr);
+        if (PDEdec(pde)) {
+            releasePageTable(pde);
+            // DEBUG:
+            printf("release PageTable\n");
+        }
     }
 
     // 第二步，释放虚拟页
@@ -549,27 +574,33 @@ int MemoryManager::allocatePagesLazy(enum AddressPoolType type, const int count,
     
         int *pte = (int *)toPTE(vaddr);
         // 页目录项无对应的页表，先分配一个页表
-        if(!(*pde & 0x00000001)) 
+        if(!(*pde & PDE_PRESENT)) 
         {
             // 从内核物理地址空间中分配一个页表
-            int page = allocatePhysicalPages(AddressPoolType::KERNEL, 1);
+            int page = allocatePageTable();
             if (!page) {
                 // 失败则回滚前面的
                 releasePages(type, start, i, userSegment);
                 releaseVirtualPages(type, start + i * PAGE_SIZE, count - i, userSegment);
-            } else {
-                pageinfos[PA2PGI(page)].clear();
-                pageinfos[PA2PGI(page)].incRef();
-                pageinfos[PA2PGI(page)].setFlag(PG_KERNEL | PG_LOCKED);
-            }
+            } 
             // 使页目录项指向页表, 同时设置权限位
-    
-            *pde = page | 0x7;
+            switch (type) {
+                case AddressPoolType::KERNEL:
+                    *pde = page | PDE_KERNEL;
+                    break;
+                case AddressPoolType::USER:
+                    *pde = page | PDE_USER;
+                    break;
+                default:
+                    PANIC("Invalid Type\n");
+            }
+
             // 初始化页表
             char *pagePtr = (char *)(((int)pte) & 0xfffff000);
             memset(pagePtr, 0, PAGE_SIZE);
         }    
         *pte = PTE_LAZY | PTE_WRITABLE;
+        PDEinc((uint32)pde);
     }
     return start;
 }
@@ -601,20 +632,15 @@ uint32 MemoryManager::mapTemp(enum AddressPoolType type, const int paddr) {
     uint32 *pde = (uint32 *)toPDE(vaddr);
     uint32 *pte = (uint32 *)toPTE(vaddr);
     // 页目录项无对应的页表，先分配一个页表
-    if(!(*pde & 0x00000001)) 
+    if(!(*pde & PDE_PRESENT)) 
     {
         // 从内核物理地址空间中分配一个页表
-        int page = allocatePhysicalPages(AddressPoolType::KERNEL, 1);
+        int page = allocatePageTable();
         if (!page)
             return 0;
-        else {
-            pageinfos[PA2PGI(page)].clear();
-            pageinfos[PA2PGI(page)].incRef();
-            pageinfos[PA2PGI(page)].setFlag(PG_KERNEL | PG_LOCKED);
-        }
-        // 使页目录项指向页表, 同时设置权限位
 
-        *pde = page | 0x7;
+        // 使页目录项指向页表, 同时设置权限位
+        *pde = page | PDE_KERNEL;
         // 初始化页表
         char *pagePtr = (char *)(((int)pte) & 0xfffff000);
         memset(pagePtr, 0, PAGE_SIZE);
@@ -644,4 +670,43 @@ bool MemoryManager::setCOW(PageInfo* pi) {
     LOG_TRACE("[setCOW] pgi=%u res=%d ref=%u extra=%u flags=0x%x\n",
            (unsigned) (pi - pageinfos), (int)res, pi->getRef(), pi->extra, (unsigned)pi->flags);
     return res;
+}
+
+int MemoryManager::allocatePageTable() {
+    int page = allocatePhysicalPages(AddressPoolType::KERNEL, 1);
+    if (!page) {
+        return 0;
+    } else {
+        pageinfos[PA2PGI(page)].clear();
+        pageinfos[PA2PGI(page)].incRef();
+        pageinfos[PA2PGI(page)].setFlag(PG_KERNEL | PG_LOCKED);
+        return page;
+    }
+}
+
+void MemoryManager::releasePageTable(uint32 PDEptr) {
+    uint32 page = (*(uint32*)PDEptr) & PDE_GET_ADDRESS;
+    ASSERT(pageinfos[PA2PGI(page)].hasFlag(PG_KERNEL));
+    ASSERT(pageinfos[PA2PGI(page)].hasFlag(PG_LOCKED));
+    ASSERT(pageinfos[PA2PGI(page)].getRef() == 1);
+    pageinfos[PA2PGI(page)].clear();
+    pageinfos[PA2PGI(page)].setFlag(PG_FREE);
+    return;
+}
+
+void MemoryManager::PDEinc(uint32 PDEptr) {
+    int count = PDE_GET_COUNT(PDEptr);
+    count++;
+    if (count > 7) count = 7;
+    PDE_SET_COUNT(PDEptr, count);
+}
+
+bool MemoryManager::PDEdec(uint32 PDEptr) {
+    int count = PDE_GET_COUNT(PDEptr);
+    if (count == 7) return false;
+    count--;
+    ASSERT(count > 0);
+    PDE_SET_COUNT(PDEptr, count);
+    if (count == 0) return true;
+    else return false;
 }

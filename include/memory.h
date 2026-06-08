@@ -87,6 +87,14 @@ public:
     void unmapTemp(enum AddressPoolType type);
 
     bool setCOW(PageInfo* pi);
+
+    int allocatePageTable(void);
+
+    void releasePageTable(uint32 PDEptr);
+    void PDEinc(uint32 PDEptr);
+
+    // true if 0
+    bool PDEdec(uint32 PDEptr);
 };
 
 #endif

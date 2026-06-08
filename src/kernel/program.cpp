@@ -350,7 +350,7 @@ int ProgramManager::createProcessPageDirectory()
         dst[i] = src[i];
     }
     // 用户进程页目录表的最后一项指向用户进程页目录表本身
-    ((int *)vaddr)[1023] = memoryManager.vaddr2paddr(vaddr) | 0x7;
+    ((int *)vaddr)[1023] = memoryManager.vaddr2paddr(vaddr) | PDE_RESERVE;
     
     return vaddr;
 }
@@ -594,19 +594,15 @@ bool ProgramManager::setupCOWPages(const uint32 pgdir, const uint32 paddrStart,
         // ptePAdir: 页表根在kernel的物理地址, pteVAdir同理
         uint32 ptePAdir = 0, pteVAdir = 0;
 
-        if (!((*pde) & 0x00000001)) {
+        if (!((*pde) & PDE_PRESENT)) {
             // 从内核物理地址空间中分配一个页表 
-            ptePAdir = memoryManager.allocatePhysicalPages(AddressPoolType::KERNEL, 1);
+            ptePAdir = memoryManager.allocatePageTable();
             if (!ptePAdir) {
                 rollbackCOWSetup(pgdir, paddrStart, vaddrStart, i, owner);
                 return false;
-            } else {
-                memoryManager.pageinfos[PA2PGI(ptePAdir)].clear();
-                memoryManager.pageinfos[PA2PGI(ptePAdir)].incRef();
-                memoryManager.pageinfos[PA2PGI(ptePAdir)].setFlag(PG_KERNEL | PG_LOCKED);
-            }
+            } 
             // 使页目录项指向页表, 同时设置权限位
-            *pde = ptePAdir | 0x7;
+            *pde = ptePAdir | PDE_USER;
             // 初始化页表
             pteVAdir = memoryManager.mapTemp(AddressPoolType::KERNEL, ptePAdir);
             // 严重错误, 无法恢复
@@ -636,8 +632,9 @@ bool ProgramManager::setupCOWPages(const uint32 pgdir, const uint32 paddrStart,
             return false;
         }
         
-        // 设置自身PTE
+        // 设置自身PTE, 同时增加PDE count
         *(uint32*)pteTempVA = (paddr | PTE_PRESENT | PTE_USER_ACCESS | PTE_COW) & ~PTE_WRITABLE;
+        memoryManager.PDEinc((uint32)pde);
         memoryManager.unmapTemp(AddressPoolType::KERNEL);
 
         // 插入rmap, 如果当前进程=owner, 必须要传真pte-vaddr(可以利用toPTE得到), 否则传入ANON

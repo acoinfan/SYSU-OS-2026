@@ -1,6 +1,7 @@
 #include "os_constant.h"
 #include "stdlib.h"
 #include "asm_utils.h"
+#include "enum.h"
 
 extern "C" void open_page_mechanism()
 {
@@ -49,16 +50,16 @@ extern "C" void open_page_mechanism()
     // 初始化页目录项
 
     // 0~4MB
-    directory[0] = ((int)page) | 0x07;
+    directory[0] = ((int)page) | PDE_KERNEL;
     // 3GB的内核空间
-    directory[768] = ((int)page) | 0x07;
+    directory[768] = ((int)page) | PDE_KERNEL;
     // 最后一个页目录项指向页目录表
-    directory[1023] = ((int)directory) | 0x7;
+    directory[1023] = ((int)directory) | PDE_KERNEL;
 
     // 769~1022项
     for (int i = 1; i < 255; i++) {
         int* pde = (int*)(PAGE_DIRECTORY + PAGE_SIZE + i * PAGE_SIZE);
-        directory[768 + i] = (int)pde | 0x7; 
+        directory[768 + i] = (int)pde | PDE_KERNEL; 
         memset(pde, 0, PAGE_SIZE);  
     }
 }

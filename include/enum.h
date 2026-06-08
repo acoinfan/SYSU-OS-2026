@@ -51,6 +51,29 @@ enum PTEFlags {
     PTE_LAZY       =1<<11,
     PTE_GET_ADDRESS=0xfffff000
 };
+
+enum PDEFlags {
+    PDE_PRESENT    =1<<0,
+    PDE_WRITABLE   =1<<1,
+    PDE_USER_ACCESS=1<<2,
+    PDE_ACCESSED   =1<<5,
+    PDE_DIRTY      =1<<6,
+    PDE_COW        =1<<9,
+    PDE_COUNT_MASK =0b111000000000,
+    PDE_GET_ADDRESS=0xffffff000,
+    PDE_KERNEL     =0xE07,
+    PDE_RESERVE    =0xE07,
+    PDE_USER       =0x7
+};
+
+#define PDE_GET_COUNT(PDEptr) (((*(uint32*)PDEptr) & PDE_COUNT_MASK) >> 9)
+
+#define PDE_SET_COUNT(PDEptr, count) \
+    do { \
+        (*(uint32*)PDEptr) = ((*(uint32*)PDEptr) & ~PDE_COUNT_MASK) | \
+                ((((count) > 7 ? 7 : (count)) & 0x7) << 9); \
+    } while (0)
+
 /* PDE PTE:
    31-12   11     10     9     8     7     6      5     4     3     2     1     0
    ADDR   LAZY   SWAP   COW    G    PAT  Dirty Access  PCD   PWT   U/S   W/R Present
