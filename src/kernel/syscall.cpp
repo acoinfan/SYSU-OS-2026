@@ -90,8 +90,8 @@ void yield() {
     asm_system_call(SYS_YIELD);
 }
 
-void execveFunc(uint32 func, int priority) {
-    asm_system_call(SYS_EXECFUNC, func, (uint32)programManager.running, priority);
+void execveFunc(uint32 func) {
+    asm_system_call(SYS_EXECFUNC, func);
 }
 
 // ====== syscall function ======
@@ -127,9 +127,8 @@ void syscall_yield() {
     programManager.schedule();
 }
 
-void syscall_execveFunc(uint32 func, uint32 PCBptr, int priority) {
-    programManager.executeProcess((const char *)func, priority, (PCB*)PCBptr, 1);
-    programManager.schedule();
+void syscall_execveFunc(uint32 func) {
+    programManager.execve((char*)func, nullptr, nullptr, 1);
 }
 
 int syscall_pte_dump(uint32 vaddr)
@@ -171,3 +170,4 @@ void syscall_pa_dump() {
     printf("Kernel Physical Avail Pages: %d\n", memoryManager.kernelPhysical.dump());
     printf("User Physical Avail Pages: %d\n", memoryManager.userPhysical.dump());    
 }
+

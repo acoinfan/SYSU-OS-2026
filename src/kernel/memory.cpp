@@ -762,6 +762,9 @@ void MemoryManager::destroyUserVAPool(UserVAddressPool* userVirtual, uint32 page
             releasePageTable(PDEptr);
         }
     }
+    // 切回内核页表
+    asm_update_cr3(PAGE_DIRECTORY);
+    
     // 释放页目录表
     releasePageDirTable(pageDirVAddr);
     

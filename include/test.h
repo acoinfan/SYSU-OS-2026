@@ -8,4 +8,5 @@ void COW_writer();
 void COW_reader();
 void fork_test();
 void stack_test();
+void init_process(void* arg);
 #endif

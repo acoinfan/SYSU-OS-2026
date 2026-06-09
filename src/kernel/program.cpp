@@ -73,7 +73,7 @@ void ProgramManager::initializeTSS()
     tss.ioMap = address + size;
 }
 
-int ProgramManager::executeThread(ThreadFunction function, void *parameter, const char *name, int priority)
+int ProgramManager::executeThread(ThreadFunction function, void *parameter, const char *name, int priority, bool needEnqueue)
 {
     // 关中断，防止创建线程的过程被打断
     LOG_TRACE("call Execute Thread\n");
@@ -91,7 +91,7 @@ int ProgramManager::executeThread(ThreadFunction function, void *parameter, cons
         thread->name[i] = name[i];
     }
 
-    thread->status = ProgramStatus::READY;
+    thread->status = ProgramStatus::CREATED;
     thread->priority = priority;
     thread->ticks = priority * 10;
     thread->ticksPassedBy = 0;
@@ -115,13 +115,16 @@ int ProgramManager::executeThread(ThreadFunction function, void *parameter, cons
     threadStartStack->parameter = (int)parameter;
 
     allPrograms.push_back(&(thread->tagInAllList));
-    switch (sType) {
-        case SchedulerType::RR:
-            rrScheduler.enqueue(thread);
-            break;
-        case SchedulerType::FIFS:
-            fifsScheduler.enqueue(thread);
-            break;
+    if (needEnqueue) {
+        thread->status = ProgramStatus::READY;
+        switch (sType) {
+            case SchedulerType::RR:
+                rrScheduler.enqueue(thread);
+                break;
+            case SchedulerType::FIFS:
+                fifsScheduler.enqueue(thread);
+                break;
+        }
     }
     
 
@@ -300,11 +303,11 @@ void ProgramManager::MESA_WakeUp(PCB *program) {
     }
 }
 
-int ProgramManager::executeProcess(const char *filename, int priority, PCB* process, int mode, char** argv, char** envp) 
+int ProgramManager::executeProcess(const char *filename, int priority, int mode, char** argv, char** envp) 
 {
     bool status = interruptManager.getInterruptStatus();
     interruptManager.disableInterrupt();
-    
+
     ELFConfig elfConf;
     // load ELF
     if (mode == 0) {
@@ -319,36 +322,17 @@ int ProgramManager::executeProcess(const char *filename, int priority, PCB* proc
     dumpELFConfig(elfConf);
 
     // 在线程创建的基础上初步创建进程的PCB
-    int pid;
-    if (!process) {
-        // 新建进程路径
-        pid = executeThread((ThreadFunction)load_process, (void*)0xFF, filename, priority);
-        if (pid == -1)
-        {
-            interruptManager.setInterruptStatus(status);
-            return -1;
-        }
-    
-        // 找到刚刚创建的PCB
-        process = ListItem2PCB(allPrograms.back(), tagInAllList);
-    } else {
-        // 否则清空PCB信息
-        memoryManager.destroyUserVAPool(&process->userVirtual, process->pageDirectoryAddress);
-        ASSERT(process->status == ProgramStatus::RUNNING);
-        process->pageDirectoryAddress = 0;
-        
-        // 切换回Kernel(此时原有的PageDir已经无效了)
-        asm_update_cr3(PAGE_DIRECTORY);
-        pid = process->pid;
-        
-        // 设置状态
-        process->needExecveReload = true;
-        // TODO: argv argc Support for execve
-        // 这里先把argv argc存入PCB, 在Load_process导入用户栈
+    int pid = executeThread((ThreadFunction)load_process,
+                            (void*)elfConf.entry, filename, priority, false);
+
+    if (pid == -1)
+    {
+        interruptManager.setInterruptStatus(status);
+        return -1;
     }
-    // 设置entry
-    process->entry = (void*)elfConf.entry;
-    process->entry_kernel = (void*)elfConf.entry_in_kernel;
+
+    // 找到刚刚创建的PCB
+    PCB *process = ListItem2PCB(allPrograms.back(), tagInAllList);
 
     // 创建进程的页目录表
     process->pageDirectoryAddress = createProcessPageDirectory(process->pid);
@@ -370,6 +354,17 @@ int ProgramManager::executeProcess(const char *filename, int priority, PCB* proc
         return -1;
     }
 
+    // 最后加入队列
+    process->status = ProgramStatus::READY;
+    switch (sType) {
+        case SchedulerType::RR:
+            rrScheduler.enqueue(process);
+            break;
+        case SchedulerType::FIFS:
+            fifsScheduler.enqueue(process);
+            break;
+    }
+    
     interruptManager.setInterruptStatus(status);
 
     return pid;
@@ -536,7 +531,7 @@ void ProgramManager::func2ELF(ELFConfig& elfConf, const void* entry) {
         cnt_end += elfConf.segments[i].memsz;
     }
 
-    // heap =
+    // heap
     elfConf.heap_begin = cnt_end;
     elfConf.heap_size = HEAP_SIZE;
     cnt_end += elfConf.heap_size;
@@ -574,14 +569,15 @@ ELFConfig ProgramManager::parseELF(const char* filename) {
     return {};
 }
 
-void load_process(const void *para)
+// 0 for fork
+void load_process(const void *entry)
 {
     interruptManager.disableInterrupt();
 
     PCB *process = programManager.running;
     ProcessStartStack *interruptStack = (ProcessStartStack *)((int)process + PAGE_SIZE - sizeof(ProcessStartStack));
     
-    if (!process->needFork) {
+    if (entry) {
         interruptStack->edi = 0;
         interruptStack->esi = 0;
         interruptStack->ebp = 0;
@@ -598,7 +594,7 @@ void load_process(const void *para)
         interruptStack->es = programManager.USER_DATA_SELECTOR;
         interruptStack->ds = programManager.USER_DATA_SELECTOR;
     
-        interruptStack->eip = (int)process->entry;
+        interruptStack->eip = (int)entry;
         interruptStack->cs = programManager.USER_CODE_SELECTOR;   // 用户模式平坦模式
         interruptStack->eflags = (0 << 12) | (1 << 9) | (1 << 1); // IOPL, IF = 1 开中断, MBS = 1 默认
 
@@ -617,9 +613,8 @@ void load_process(const void *para)
         userStack[1] = 0;
         userStack[2] = 0;
         interruptStack->esp = (uint32)userStack; 
-        // TODO: 设置argv, argc
     } else {
-        process->needFork = false;
+        
         LOG_TRACE("load fork from load_process, pid=%d\n", process->pid);
     }
     // 创建进程,直接lazyAlloc栈, 否则就使用默认COW
@@ -684,6 +679,7 @@ bool ProgramManager::setupCOWPages(const uint32 pgdir, const uint32 paddrStart,
         
         // 设置自身PTE, 同时增加PDE count
         *(uint32*)pteTempVA = (paddr | PTE_PRESENT | PTE_USER_ACCESS | PTE_COW) & ~PTE_WRITABLE;
+        LOG_TRACE("update PTE at vaddr = 0x%x\n", vaddr);
         memoryManager.PDEinc((uint32)pde);
         memoryManager.unmapTemp(AddressPoolType::KERNEL);
 
@@ -735,7 +731,7 @@ int ProgramManager::fork()
     // 创建子进程
     // 在线程创建的基础上初步创建进程的PCB
     int pid = executeThread((ThreadFunction)load_process,
-                            (void *)0, "fork child", 0);
+                            (void *)0, "fork child", 0, true);
     if (pid == -1)
     {
         interruptManager.setInterruptStatus(status);
@@ -980,51 +976,102 @@ uint16 ProgramManager::getppid() const {
     return this->running->parentPid;
 }
 
-// int ProgramManager::execve(const char *filename, char *const argv[], char *const envp[], int mode) {
-//     bool status = interruptManager.getInterruptStatus();
-//     int priority = 1;
-//     interruptManager.disableInterrupt();
+int ProgramManager::execve(const char *filename, char *const argv[], char *const envp[], int mode) {
+    bool status = interruptManager.getInterruptStatus();
+    int priority = 1;
+    interruptManager.disableInterrupt();
 
-//     ELFConfig elfConf;
-//     // load ELF
-//     if (mode == 0) {
-//         elfConf = parseELF(filename);
-//     // load Function
-//     } else if (mode == 1) {
-//         func2ELF(elfConf, filename);
-//     } else {
-//         ASSERT(0);
-//         asm_halt();
-//     }
-//     dumpELFConfig(elfConf);
+    ELFConfig elfConf;
+    uint32 pageDirAddr = 0;
+    // load ELF
+    if (mode == 0) {
+        elfConf = parseELF(filename);
+    // load Function
+    } else if (mode == 1) {
+        func2ELF(elfConf, filename);
+    } else {
+        ASSERT(0);
+        asm_halt();
+    }
+    dumpELFConfig(elfConf);
 
-//     // 使用现有进程PCB
-//     PCB *process = programManager.running;
+    // 使用现有进程PCB
+    PCB *process = programManager.running;
 
-//     // 清除原有的页目录表, 页表, 虚拟地址池
-//     ASSERT(process->pageDirectoryAddress);
-//     memoryManager.destroyUserVAPool(&process->userVirtual, process->pageDirectoryAddress);
-//     // 创建进程的页目录表
-//     process->pageDirectoryAddress = createProcessPageDirectory(process->pid);
-//     if (!process->pageDirectoryAddress)
-//     {
-//         process->status = ProgramStatus::DEAD;
-//         interruptManager.setInterruptStatus(status);
-//         return -1;
-//     }
+    
+    // 清除原有的页目录表, 页表, 虚拟地址池, 同时切换为内核页表
+    ASSERT(process->pageDirectoryAddress);
+    memoryManager.destroyUserVAPool(&process->userVirtual, process->pageDirectoryAddress);
 
-//     // 创建进程的虚拟地址池
-//     bool res = createUserVirtualPool(process, elfConf, 1);
-//     LOG_TRACE("create res: %d, pid: %d\n", res, pid);
+    // 创建进程的页目录表
+    pageDirAddr = createProcessPageDirectory(process->pid);
+    if (!pageDirAddr)
+    {
+        process->status = ProgramStatus::DEAD;
+        interruptManager.setInterruptStatus(status);
+        return -1;
+    }
+    
+    
 
-//     if (!res)
-//     {
-//         process->status = ProgramStatus::DEAD;
-//         interruptManager.setInterruptStatus(status);
-//         return -1;
-//     }
+    // 创建进程的虚拟地址池, 同时初始化部分段内容, 设置COW
+    bool res = createUserVirtualPool(process, elfConf, 1);
+    LOG_TRACE("create res: %d, pid: %d\n", res, pid);
 
-//     interruptManager.setInterruptStatus(status);
+    if (!res)
+    {
+        process->status = ProgramStatus::DEAD;
+        interruptManager.setInterruptStatus(status);
+        programManager.schedule(); 
 
-//     return process->pid;
-// }
+        // 理论上 schedule() 换走后就永远不会回来了
+        while(1) { asm_halt(); }
+    }
+
+    // 切换页表
+    asm_update_cr3(memoryManager.vaddr2paddr(pageDirAddr));
+
+    // 伪造顶部栈
+    uint32 stackPage = programManager.running->userVirtual.stackPool.length;
+    uint32 addr = memoryManager.allocatePages(AddressPoolType::USER, 1, 
+                                        (VPageFlags)(VP_USER | VP_RW), UserSegment::STACK, true);
+    (void)memoryManager.allocatePagesLazy(AddressPoolType::USER, stackPage - 1, 
+                                                    (VPageFlags)(VP_USER | VP_RW), UserSegment::STACK, true);
+    LOG_TRACE("[load_process] entry=0x%x lazy_stack=0x%x pid=%d\n", (uint32)elfConf.entry, addr, process->pid);
+
+    // 顶部空间设置(returnVal和 TODO: argc, argv)
+    uint32 user_esp = STACK_TOP - 4; 
+    user_esp -= 12;                  
+    int *userStack = (int *)user_esp;
+    userStack[0] = (int)::exit;        // 对应 esp
+    userStack[1] = 0;                // 对应 esp + 4 (argc)
+    userStack[2] = 0;                // 对应 esp + 8 (argv)
+
+    // 找到当前进程内核栈顶应该放置 ProcessStartStack 的位置
+    ProcessStartStack *interruptStack = (ProcessStartStack *)((int)process + PAGE_SIZE - sizeof(ProcessStartStack));
+
+    // 擦除并初始化通用寄存器
+    memset(interruptStack, 0, sizeof(ProcessStartStack));
+
+    // 填充段选择子 (用户态平坦模型)
+    interruptStack->fs = programManager.USER_DATA_SELECTOR;
+    interruptStack->es = programManager.USER_DATA_SELECTOR;
+    interruptStack->ds = programManager.USER_DATA_SELECTOR;
+
+    // 极其关键的四大核心寄存器：
+    interruptStack->eip = elfConf.entry;          // 新程序的入口点！(来自解析出的 ELF 头)
+    interruptStack->cs = programManager.USER_CODE_SELECTOR;
+    interruptStack->eflags = (0 << 12) | (1 << 9) | (1 << 1); 
+
+    interruptStack->esp = user_esp;             
+    interruptStack->ss = programManager.USER_STACK_SELECTOR;
+
+    // 恢复interrupt
+    interruptManager.setInterruptStatus(status);
+
+    // 弹出栈
+    asm_start_process((int)interruptStack);
+
+    // SHOULD NEVER REACH HERE
+    return process->pid;
+}

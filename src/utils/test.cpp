@@ -2,8 +2,8 @@
 #include "os_modules.h"
 #include "os_constant.h"
 #include "asm_utils.h"
-#include "syscall.h"
 #include "stdio.h"
+#include "user.h"
 
 void test_print_something(void* arg) {
     write("Call Print something\n");
@@ -49,7 +49,7 @@ void test_lazy_alloc_thread(void* arg) {
     write("Lazy Alloc Done\n");
     interruptManager.enableTimeInterrupt();
 
-    int pid = programManager.executeThread(test_out_of_memory, nullptr, "test_out_of_memory", 1);
+    int pid = programManager.executeThread(test_out_of_memory, nullptr, "test_out_of_memory", 1, true);
     if (pid == -1)
     {
         write("can not execute thread\n");
@@ -109,27 +109,27 @@ void fork_test() {
         if (pid)
         {
             char str1[] = "I am father, wait for my child\n";
-            // char str2[] = "Father Rape his child\n";
+            char str2[] = "Father Rape his child\n";
 
             write(str1);
-            // waitpid(pid, nullptr);
-            // write(str2);
+            waitpid(pid, nullptr);
+            write(str2);
         }
         else
         {
             char str1[] = "I am child\n";
             write(str1);
-            // char str3[] = "Child is waiting for his child\n";
-            // char str4[] = "Child Rape his child\n";
-            // if (fork() == 0) {
-            //     char str2[] = "I am child of child\n";
-            //     write(str2);
-            //     execveFunc((uint32)test_print_something, 1);
-            // } else {
-            //     write(str3);
-            //     wait(nullptr);
-            //     write(str4);
-            // }
+            char str3[] = "Child is waiting for his child\n";
+            char str4[] = "Child Rape his child\n";
+            if (fork() == 0) {
+                char str2[] = "I am child of child\n";
+                write(str2);
+                execveFunc((uint32)test_print_something);
+            } else {
+                write(str3);
+                wait(nullptr);
+                write(str4);
+            }
         }
     }
     return;
@@ -143,4 +143,31 @@ void stack_test() {
 
     write("done\n");
     return;
+}
+
+void init_process(void* arg) {
+    write("start init, pid = 1\n");
+    pa_dump();
+    int count = 0;
+
+    if (fork() == 0) {
+        execveFunc((uint32)fork_test);
+        return;
+    }
+    while (true)
+    {
+        if (wait(nullptr) == -1)
+        {
+            if (count == 0) {
+                write("init try to rape~~~\n");
+            }
+            count++;
+            if (count == 50) {
+                count = 0;
+            }
+            yield();
+            continue;
+        }
+        ;
+    }
 }

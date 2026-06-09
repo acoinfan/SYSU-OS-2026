@@ -69,8 +69,8 @@ public:
     @param filename ELF filename / Function Address
     @param target nullptr for (init[pid=1]), Current PCB for execve
     */
-    int executeProcess(const char *filename, int priority, PCB* target, 
-                        int mode, char** argv = nullptr, char** envp = nullptr);
+    int executeProcess(const char *filename, int priority, int mode, 
+                        char** argv = nullptr, char** envp = nullptr);
     // 创建一个线程并放入就绪队列
 
     // function：线程执行的函数
@@ -79,7 +79,7 @@ public:
     // priority：线程的优先级
 
     // 成功，返回pid；失败，返回-1
-    int executeThread(ThreadFunction function, void *parameter, const char *name, int priority);
+    int executeThread(ThreadFunction function, void *parameter, const char *name, int priority, bool needEnqueue);
 
     // 分配一个PCB
     PCB *allocatePCB();
