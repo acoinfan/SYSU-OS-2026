@@ -88,26 +88,41 @@ void first_thread(void *arg)
     asm_halt();
 }
 
+void init_process(void* arg) {
+    write("start init, pid = 1\n");
+    pa_dump();
+
+    if (fork() == 0) {
+        // execveFunc((uint32)fork_test, 1);
+        write("i am son\n");
+        return;
+    }
+    while (true)
+    {
+        // if (wait(nullptr) == -1)
+        // {
+        //     // yield();
+        //     continue;
+        // }
+        ;
+    }
+}
 
 void idle_thread(void* arg) {
-    printf("start process\n");
-    printf("BEFORE: kernel - User Physical\n");
-    memoryManager.kernelPhysical.dump();
-    memoryManager.userPhysical.dump();
+    printf("start idle, pid = 0\n");
 
-    programManager.executeProcess((const char *)fork_test, 1, 1);
-    printf("AFTER: kernel - User Physical\n");
-    memoryManager.kernelPhysical.dump();
-    memoryManager.userPhysical.dump();
-    // programManager.executeProcess((const char *)stack_test, 1, 1);
-    // programManager.executeProcess((const char *)COW_writer, 1, 1);
-    // programManager.executeProcess((const char *)COW_reader, 1, 1);
+    programManager.executeProcess((const char *)init_process, 0, nullptr, 1);
+    // programManager.executeProcess((const char *)stack_test, 1, nullptr, 1);
+    // programManager.executeProcess((const char *)COW_writer, 1, nullptr, 1);
+    // programManager.executeProcess((const char *)COW_reader, 1, nullptr, 1);
     printf("Load Done\n");
     uint32 count = 0;
+    // sleep
+
     while (1) {
         count++;
         if (count == 100000000) {
-            printf("idling\n");
+            LOG_TRACE("idling\n");
             count = 0;
         }
         ;

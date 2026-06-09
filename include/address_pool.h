@@ -176,7 +176,7 @@ public:
     VictimInfo findVictim(uint32 search_length=0, uint32 round=2);
 
     // 统计空间
-    void dump() const;
+    uint32 dump() const;
 };
 
 typedef VAddressPool KernelVAddressPool;

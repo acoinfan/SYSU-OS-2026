@@ -6,6 +6,8 @@
 #include "stdio.h"
 #include "thread.h"
 #include "debug.h"
+#include "enum.h"
+#include "os_type.h"
 
 int system_call_table[MAX_SYSTEM_CALL];
 
@@ -14,14 +16,17 @@ void SystemService::initialize()
     memset((char *)system_call_table, 0, sizeof(int) * MAX_SYSTEM_CALL);
     // 代码段选择子默认是DPL=0的平坦模式代码段选择子，DPL=3，否则用户态程序无法使用该中断描述符
     interruptManager.setInterruptDescriptor(0x80, (uint32)asm_system_call_handler, 3);
-    setSystemCall(SyscallType::SYSCALL_0, (int)syscall_0);
-    setSystemCall(SyscallType::WRITE, (int)syscall_write);
-    setSystemCall(SyscallType::FORK, (int)syscall_fork);
-    setSystemCall(SyscallType::EXIT, (int)syscall_exit);
-    // setSystemCall(SyscallType::WAIT, (int)syscall_wait);
-    setSystemCall(SyscallType::MOVE_CURSOR, (int)syscall_move_cursor);
-    setSystemCall(SyscallType::PTE_DUMP, (int)syscall_dump_pte);
-    setSystemCall(10, (int)syscall_halt);
+    setSystemCall(SYS_GETPID, (int)syscall_getpid);
+    setSystemCall(SYS_GETPPID, (int)syscall_getppid);
+    setSystemCall(SYS_FORK, (int)syscall_fork);
+    setSystemCall(SYS_EXIT, (int)syscall_exit);
+    setSystemCall(SYS_WAIT, (int)syscall_wait);
+    setSystemCall(SYS_YIELD, (int)syscall_yield);
+    setSystemCall(SYS_WRITE, (int)syscall_write);
+    setSystemCall(SYS_MOVE_CURSOR, (int)syscall_move_cursor);
+    setSystemCall(SYS_PTE_DUMP, (int)syscall_pte_dump);
+    setSystemCall(SYS_PA_DUMP, (int)syscall_pa_dump);
+    setSystemCall(SYS_EXECFUNC, (int)syscall_execveFunc);
 }
 
 bool SystemService::setSystemCall(int index, int function)
@@ -33,8 +38,6 @@ bool SystemService::setSystemCall(int index, int function)
 
 int sys_write(int fd, const char* buf, int len)
 {
-    (void)fd; // 目前只支持 stdout，忽略 fd
-
     if (!buf || len <= 0) return -1;
 
     for (int i = 0; i < len; ++i) {
@@ -43,18 +46,93 @@ int sys_write(int fd, const char* buf, int len)
     return len;
 }
 
-int syscall_0(int first, int second, int third, int forth, int fifth)
-{
-    printf("systerm call 0: %d, %d, %d, %d, %d\n",
-           first, second, third, forth, fifth);
-    return first + second + third + forth + fifth;
+int pte_dump(uint32 vaddr) {
+    return asm_system_call(SYS_PTE_DUMP, vaddr);
 }
 
-int dump_pte(uint32 vaddr) {
-    return asm_system_call(6, vaddr);
+void pa_dump() {
+    asm_system_call(SYS_PA_DUMP);
 }
 
-int syscall_dump_pte(uint32 vaddr)
+uint16 getpid() {
+    return asm_system_call(SYS_GETPID);
+}
+
+uint16 getppid() {
+    return asm_system_call(SYS_GETPPID);
+}
+
+int fork() {
+    return asm_system_call(SYS_FORK);
+}
+
+int write(const char *str) {
+    return asm_system_call(SYS_WRITE, (int)str);
+}
+
+void exit(int ret) {
+    asm_system_call(SYS_EXIT, ret);
+}
+
+int wait(int *retval) {
+    waitpid(-1, retval);
+}
+
+int waitpid(int pid, int *retval) {
+    return asm_system_call(SYS_WAIT, pid, (int)retval);
+}
+
+void move_cursor(int i, int j) {
+    asm_system_call(SYS_MOVE_CURSOR, i, j);
+}
+
+void yield() {
+    asm_system_call(SYS_YIELD);
+}
+
+void execveFunc(uint32 func, int priority) {
+    asm_system_call(SYS_EXECFUNC, func, (uint32)programManager.running, priority);
+}
+
+// ====== syscall function ======
+uint16 syscall_getpid() {
+    return programManager.getpid();
+}
+
+uint16 syscall_getppid() {
+    return programManager.getppid();
+}
+
+int syscall_write(const char *str) {
+    return stdio.print(str);
+}
+
+int syscall_fork() {
+    return programManager.fork();
+}
+
+void syscall_exit(int ret) {
+    programManager.exit(ret);
+}
+
+int syscall_wait(int pid, int *retval) {
+    return programManager.waitpid(pid, retval);
+}
+
+void syscall_move_cursor(int i, int j) {
+    stdio.moveCursor(i, j);
+}
+
+void syscall_yield() {
+    programManager.schedule();
+}
+
+void syscall_execveFunc(uint32 func, uint32 PCBptr, int priority) {
+    programManager.executeProcess((const char *)func, priority, (PCB*)PCBptr, 1);
+    programManager.schedule();
+}
+
+int syscall_pte_dump(uint32 vaddr)
 {
     PCB* cur = programManager.running;
     if (!cur) return -1;
@@ -89,49 +167,7 @@ int syscall_dump_pte(uint32 vaddr)
     return 0;
 }
 
-int write(const char *str) {
-    return asm_system_call(1, (int)str);
-}
-
-int syscall_write(const char *str) {
-    return stdio.print(str);
-}
-
-int fork() {
-    return asm_system_call(2);
-}
-
-int syscall_fork() {
-    return programManager.fork();
-}
-
-void exit(int ret) {
-    asm_system_call(3, ret);
-}
-
-void syscall_exit(int ret) {
-    programManager.exit(ret);
-}
-
-// int wait(int *retval) {
-//     return asm_system_call(4, (int)retval);
-// }
-
-// int syscall_wait(int *retval) {
-//     return programManager.wait(retval);
-// }
-
-void move_cursor(int i, int j) {
-    asm_system_call(5, i, j);
-}
-void syscall_move_cursor(int i, int j) {
-    stdio.moveCursor(i, j);
-}
-
-void halt() {
-    asm_system_call(10);
-}
-
-void syscall_halt() {
-    asm_halt();
+void syscall_pa_dump() {
+    printf("Kernel Physical Avail Pages: %d\n", memoryManager.kernelPhysical.dump());
+    printf("User Physical Avail Pages: %d\n", memoryManager.userPhysical.dump());    
 }

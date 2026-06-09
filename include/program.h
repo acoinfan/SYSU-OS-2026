@@ -19,7 +19,8 @@ struct ElfSegment {
 
 // 注意, 这里左闭右开
 struct ELFConfig {
-    uint32 entry;             // 程序入口
+    uint32 entry;             // 真正程序入口VADDR
+    uint32 entry_in_kernel;   // 留给func Load的接口
     ElfSegment segments[ELF_SEGMENT_AMOUNT];   // 实际数量可配, 目前包含TEXT DATA BSS
     uint32 segment_count;
 
@@ -66,8 +67,10 @@ public:
     /*
     @param mode 0 for ELF, 1 for Function(debug)
     @param filename ELF filename / Function Address
+    @param target nullptr for (init[pid=1]), Current PCB for execve
     */
-    int executeProcess(const char *filename, int priority, int mode = 0);
+    int executeProcess(const char *filename, int priority, PCB* target, 
+                        int mode, char** argv = nullptr, char** envp = nullptr);
     // 创建一个线程并放入就绪队列
 
     // function：线程执行的函数
@@ -114,9 +117,16 @@ public:
     int fork();
 
     // execve();
-    int execve();
+    int execve(const char *filename, char *const argv[], char *const envp[], int mode = 0);
 
     void exit(int ret);
+
+    int waitpid(int pid, int* retval);
+
+    uint16 getpid() const;
+    uint16 getppid() const;
+
+    
 private:
     // 用于COW过程中, 把paddrStart对应的内容, 复制到owner页表下对应地址为vaddrStart的地方, 总计复制count页
     bool setupCOWPages(const uint32 pgdir, const uint32 paddrStart, const uint32 vaddrStart, 

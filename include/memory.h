@@ -100,6 +100,8 @@ public:
 
     // true if 0
     bool PDEdec(uint32 PDEptr);
+
+    void destroyUserVAPool(UserVAddressPool* userVirtual, uint32 pageDirVAddr);
 };
 
 #endif

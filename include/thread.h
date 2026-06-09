@@ -64,6 +64,14 @@ struct PCB
     UserVAddressPool userVirtual;    // 用户程序虚拟地址池
     int parentPid;            // 父进程pid
     int retValue;             // 返回值
+
+    bool needExecveReload = false;
+    bool needFork = false;
+    void* entry;
+    void* entry_kernel;
+    // char argv[MAX_ARGV_COUNT][MAX_ARGV_LENGTH];
+    // int argc;
+    // char** envp = nullptr;
 };
 
 /*

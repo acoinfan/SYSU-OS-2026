@@ -19,6 +19,6 @@ set pagination off
 # c
 # b ProgramManager::fork
 # b ProgramManager::executeProcess
-b ProgramManager::exit
+b ProgramManager::executeProcess
 c
 layout src

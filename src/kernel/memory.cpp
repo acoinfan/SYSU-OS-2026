@@ -734,3 +734,37 @@ bool MemoryManager::PDEdec(uint32 PDEptr) {
     if (count == 0) return true;
     else return false;
 }
+
+void MemoryManager::destroyUserVAPool(UserVAddressPool* userVirtual, uint32 pageDirVAddr) {
+    // 释放页表和物理页
+    releasePages(AddressPoolType::USER, userVirtual->segBoundary.text.start, 
+                (userVirtual->segBoundary.text.end - userVirtual->segBoundary.text.start + 1) / PAGE_SIZE,
+                UserSegment::TEXT);
+    releasePages(AddressPoolType::USER, userVirtual->segBoundary.data.start, 
+                (userVirtual->segBoundary.data.end - userVirtual->segBoundary.data.start + 1) / PAGE_SIZE,
+                UserSegment::DATA);
+    releasePages(AddressPoolType::USER, userVirtual->segBoundary.bss.start, 
+                (userVirtual->segBoundary.bss.end - userVirtual->segBoundary.bss.start + 1) / PAGE_SIZE,
+                UserSegment::BSS);      
+                                                  
+    releasePages(AddressPoolType::USER, userVirtual->heapPool.startAddress, 
+                userVirtual->heapPool.length, UserSegment::HEAP);
+    releasePages(AddressPoolType::USER, userVirtual->stackPool.startAddress, 
+                userVirtual->stackPool.length, UserSegment::STACK);
+    releasePages(AddressPoolType::USER, userVirtual->mmapPool.startAddress, 
+                userVirtual->mmapPool.length, UserSegment::MMAP);    
+    releasePages(AddressPoolType::USER, userVirtual->TLSPool.startAddress, 
+                userVirtual->TLSPool.length, UserSegment::TLS);
+
+    for (uint32 vaddr = 0; vaddr <= USER_VADDR_END; vaddr += PAGE_SIZE * PAGE_SIZE) {
+        uint32 PDEptr = toPDE(vaddr);
+        if (*(uint32*)PDEptr & PDE_PRESENT) {
+            releasePageTable(PDEptr);
+        }
+    }
+    // 释放页目录表
+    releasePageDirTable(pageDirVAddr);
+    
+    // 释放BitMap
+    userVirtual->destroy();
+}

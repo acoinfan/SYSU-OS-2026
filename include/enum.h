@@ -9,24 +9,17 @@ enum ProgramStatus
     RUNNING,
     READY,
     BLOCKED,
-    DEAD
+    DEAD,
 };
 
 enum PageFlags : uint16 {
     PG_RESERVED =1<<0,   // 系统保留
-
     PG_FREE     =1<<1,   // buddy空闲页
-
     PG_FILE     =1<<2,   // 文件映射页
-
     PG_LOCKED   =1<<3,   // 禁止淘汰
-
     PG_ZERO     =1<<4,   // 零页
-
     PG_KERNEL   =1<<5,   // 内核页
-
     PG_SINGLE   =1<<6,   // Buddy中order=0的Page, 用于CLOCK算法
-    
     PG_ALL      =0xFFFF
 };
 /*
@@ -129,12 +122,24 @@ enum UserSegment : unsigned char {
 };
 
 enum SyscallType : uint8 {
-    SYSCALL_0 = 0,
-    WRITE,
-    FORK,
-    EXIT,
-    WAIT,
-    MOVE_CURSOR,
-    PTE_DUMP
+    SYS_GETPID = 0,
+    SYS_GETPPID,
+
+    SYS_FORK,
+    SYS_EXIT, 
+    SYS_WAIT,
+    SYS_EXEC,
+    SYS_EXECFUNC,
+
+    SYS_YIELD,
+    SYS_SLEEP,
+
+    SYS_OPEN,
+    SYS_READ, 
+    SYS_WRITE, 
+    SYS_CLOSE,
+    SYS_MOVE_CURSOR,
+    SYS_PTE_DUMP,
+    SYS_PA_DUMP
 };
 #endif

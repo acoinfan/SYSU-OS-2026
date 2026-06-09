@@ -186,7 +186,7 @@ VictimInfo PAddressPool::findVictim(uint32 search_length, uint32 round)
     return {0, 0};
 }
 
-void PAddressPool::dump() const {
+uint32 PAddressPool::dump() const {
     uint32 freePages = 0;
     for (int order = 0; order < MAX_ORDER + 1; order++) {
         FreeNode* cnt = resources.freeArea[order];
@@ -195,7 +195,7 @@ void PAddressPool::dump() const {
             cnt = cnt->next;
         }
     }
-    printf("total Avail Pages: %d\n", freePages);
+    return freePages;
 }
 // void UserVAddressPool::initialize(const struct SegBoundary& segBoundary, 
 //                         const VAPConfig& heapConf, const VAPConfig& stackConf,
@@ -377,7 +377,6 @@ bool UserVAddressPool::cloneFrom(const UserVAddressPool& parent, uint32 owner) {
     uint32 stackLength = this->stackPool.length;
     uint32 TLSLength = this->TLSPool.length;
     uint32 mmapLength = this->mmapPool.length;
-    dump_pte(heapBitmapStart);
 
     // Bitmap memcpy
     memcpy((void*)heapBitmapStart, parent.heapPool.resources.bitmap, heapBitmapBytes);
@@ -413,6 +412,7 @@ void UserVAddressPool::destroy() {
             memoryManager.rmapManager.attach(&memoryManager.pageinfos[PA2PGI(paddr)], pte_paddr, pte_vaddr, programManager.running->pid);
         }        
     }
+    this->isInitialized = false;
 }
 
 // 成功则返回第一个页的地址，失败则返回-1

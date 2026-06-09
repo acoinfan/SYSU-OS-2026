@@ -5,23 +5,30 @@
 #include "syscall.h"
 #include "stdio.h"
 
+void test_print_something(void* arg) {
+    write("Call Print something\n");
+    write("Welcome to use SYSU-OS-2026\n");
+    write("Author: A_coin_fan\n");
+    write("Hello from 2026/6/9\n");
+}
+
 void test_out_of_memory(void* arg) {
-    printf("Out Of Memory Begin\n");
+    write("Out Of Memory Begin\n");
     interruptManager.disableTimeInterrupt();
     char* p0 = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, 1, VP_RW);
     char* p1 = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, 1, VP_RW);
 
     // OK
     *p0 = 0;
-    printf("Part 1 OK\n");
+    write("Part 1 OK\n");
     // FAIL
     *p1 = 0;
-    printf("Never Reach Here if Kernel PA = 1\n");
+    write("Never Reach Here if Kernel PA = 1\n");
     interruptManager.enableTimeInterrupt(); 
     return;
 }
 void test_lazy_alloc_thread(void* arg) {
-    printf("Lazy Alloc Begin\n");
+    write("Lazy Alloc Begin\n");
     interruptManager.disableTimeInterrupt();
     char* p0 = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, 1, VP_RW);
     // LAZY ALLOC RELEASE
@@ -39,13 +46,13 @@ void test_lazy_alloc_thread(void* arg) {
     memoryManager.releasePages(AddressPoolType::KERNEL, (int)p0, 1);
     // LAZY ALLOC RELEASE
     memoryManager.releasePages(AddressPoolType::KERNEL, (int)testp, 1);
-    printf("Lazy Alloc Done\n");
+    write("Lazy Alloc Done\n");
     interruptManager.enableTimeInterrupt();
 
     int pid = programManager.executeThread(test_out_of_memory, nullptr, "test_out_of_memory", 1);
     if (pid == -1)
     {
-        printf("can not execute thread\n");
+        write("can not execute thread\n");
         asm_halt();
     }
     return;
@@ -57,7 +64,7 @@ void COW_writer() {
     c[0] = *p;
     c[1] = '\0';
     uint32 address = (uint32)p;
-    dump_pte(address);
+    pte_dump(address);
     write("[writer] before: ");
     write(&c[0]);    // 打印 'A'
 
@@ -66,7 +73,7 @@ void COW_writer() {
     write("\n[writer] after: ");
     write(&c[0]);
 
-    dump_pte(address);
+    pte_dump(address);
     asm_halt();
 }
 
@@ -76,7 +83,7 @@ void COW_reader() {
     c[0] = *p;
     c[1] = '\0';
     uint32 address = (uint32)p;
-    dump_pte(address);
+    pte_dump(address);
     write("[reader] sees: ");
     write(&c[0]);  
     write("\n");
@@ -101,19 +108,28 @@ void fork_test() {
     {
         if (pid)
         {
-            char str[30] = "I am father, fork return: ";
-            str[27] = (char) (pid + '0');
-            str[28] = '\0';
-            write(str);
+            char str1[] = "I am father, wait for my child\n";
+            // char str2[] = "Father Rape his child\n";
+
+            write(str1);
+            // waitpid(pid, nullptr);
+            // write(str2);
         }
         else
         {
-            char str[30] = "I am child, fork return: ";
-            str[27] = (char) (pid + '0');
-            str[28] - '\n';
-            write(str);
-            // write("I am child, fork return: %d, my pid: %d\n", pid, 
-            //        programManager.running->pid);
+            char str1[] = "I am child\n";
+            write(str1);
+            // char str3[] = "Child is waiting for his child\n";
+            // char str4[] = "Child Rape his child\n";
+            // if (fork() == 0) {
+            //     char str2[] = "I am child of child\n";
+            //     write(str2);
+            //     execveFunc((uint32)test_print_something, 1);
+            // } else {
+            //     write(str3);
+            //     wait(nullptr);
+            //     write(str4);
+            // }
         }
     }
     return;
