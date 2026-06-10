@@ -2,7 +2,7 @@
 #define DEBUG_H
 
 #include "screen.h"
-#define DEBUG_LEVEL 0  // 0: 关闭所有非必要调试; 1: 只保留报错; 2: 开启INFO; 3: 详细追踪
+#define DEBUG_LEVEL 2  // 0: 关闭所有非必要调试; 1: 只保留报错; 2: 开启INFO; 3: 详细追踪
 
 
 #define PANIC(fmt, ...) do { \

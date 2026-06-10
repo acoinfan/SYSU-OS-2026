@@ -24,4 +24,9 @@ void *memcpy(void *str1, const void *str2, uint32 n);
 unsigned strlen(const char* const ptr);
 
 char *strcpy(char *dest, const char *src);
+
+void *malloc(uint32 size);
+
+void free(void* ptr);
+
 #endif

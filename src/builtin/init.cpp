@@ -1,6 +1,7 @@
 #include "init.h"
 #include "test.h"
 #include "syscall.h"
+#include "malloctest.h"
 
 void init(void* arg) {
     write("start init, pid = 1\n");
@@ -8,7 +9,7 @@ void init(void* arg) {
     int count = 0;
 
     if (fork() == 0) {
-        execveFunc((uint32)fork_test);
+        execveFunc((uint32)malloc_test);
         return;
     }
     while (true)

@@ -24,6 +24,8 @@ int pte_dump(uint32 vaddr);
 
 void execveFunc(uint32 func_addr);
 
+uint32 expandHeap(uint32 pageCount);
+
 // 2 Args
 int waitpid(int pid, int* retval);
 

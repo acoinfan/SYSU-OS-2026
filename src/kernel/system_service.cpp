@@ -27,6 +27,7 @@ void SystemService::initialize()
     setSystemCall(SYS_PTE_DUMP, (int)syscall_pte_dump);
     setSystemCall(SYS_PA_DUMP, (int)syscall_pa_dump);
     setSystemCall(SYS_EXECFUNC, (int)syscall_execveFunc);
+    setSystemCall(SYS_EXPANDHEAP, (int)syscall_expandHeap);
 }
 
 bool SystemService::setSystemCall(int index, int function)
@@ -171,3 +172,7 @@ void syscall_pa_dump() {
     kprintf("User Physical Avail Pages: %d\n", memoryManager.userPhysical.dump());    
 }
 
+uint32 syscall_expandHeap(uint32 pageCount) {
+    return memoryManager.allocatePagesLazy(AddressPoolType::USER, pageCount, 
+                                    (VPageFlags)(VP_USER | VP_RW), UserSegment::HEAP);
+}

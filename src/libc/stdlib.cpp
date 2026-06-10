@@ -1,4 +1,5 @@
 #include "os_type.h"
+#include "malloc.h"
 
 template<typename T>
 void swap(T &x, T &y) {
@@ -83,6 +84,14 @@ char *strcpy(char *dest, const char *src) {
         ;
 
     return ret;
+}
+
+void *malloc(uint32 size) {
+    return mm_malloc(size);
+}
+
+void free(void* ptr) {
+    return mm_free(ptr);
 }
 
 extern "C" {

@@ -1,5 +1,5 @@
 target remote:1234
-file ../build/kernel.o
+file ../build/obj/boot/kernel.o
 set disassembly-flavor intel
 set pagination off
 
@@ -19,6 +19,5 @@ set pagination off
 # c
 # b ProgramManager::fork
 # b ProgramManager::executeProcess
-b ProgramManager::executeProcess
-c
+b init
 layout src

@@ -140,6 +140,7 @@ enum SyscallType : uint8 {
     SYS_CLOSE,
     SYS_MOVE_CURSOR,
     SYS_PTE_DUMP,
-    SYS_PA_DUMP
+    SYS_PA_DUMP,
+    SYS_EXPANDHEAP
 };
 #endif

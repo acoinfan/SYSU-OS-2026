@@ -41,6 +41,10 @@ void execveFunc(uint32 func_addr) {
     _syscall1(SYS_EXECFUNC, func_addr);
 }
 
+uint32 expandHeap(uint32 pageCount) {
+    return _syscall1(SYS_EXPANDHEAP, pageCount);
+}
+
 // 2 Args
 int waitpid(int pid, int* retval) {
     return (int)_syscall2(SYS_WAIT, (uint32)pid, (uint32)retval);
