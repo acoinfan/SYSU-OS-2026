@@ -2,10 +2,9 @@
 #include "os_constant.h"
 #include "stdlib.h"
 #include "asm_utils.h"
-#include "stdio.h"
+#include "screen.h"
 #include "program.h"
 #include "os_modules.h"
-#include "assert.h"
 #include "debug.h"
 
 MemoryManager::MemoryManager()
@@ -213,11 +212,11 @@ void MemoryManager::initialize()
         pageinfos[i].setFlag(PG_FREE);
     }
 
-    printf("total memory: %d bytes ( %d MB )\n",
+    kprintf("total memory: %d bytes ( %d MB )\n",
         this->totalMemory,
     this->totalMemory / 1024 / 1024);
 
-    printf("kernel pool\n"
+    kprintf("kernel pool\n"
            "    start address: 0x%x\n"
            "    total pages: %d ( %d MB )\n"
            "    bitmap start address: 0x%x\n",
@@ -225,7 +224,7 @@ void MemoryManager::initialize()
            kernelPages, kernelPages * PAGE_SIZE / 1024 / 1024,
            kernelPhysicalBitMapStart);
 
-    printf("user pool\n"
+    kprintf("user pool\n"
            "    start address: 0x%x\n"
            "    total pages: %d ( %d MB )\n"
            "    bit map start address: 0x%x\n",
@@ -233,7 +232,7 @@ void MemoryManager::initialize()
            userPages, userPages * PAGE_SIZE / 1024 / 1024,
            userPhysicalBitMapStart);
 
-    printf("kernel virtual pool\n"
+    kprintf("kernel virtual pool\n"
            "    start address: 0x%x\n"
            "    total pages: %d  ( %d MB ) \n"
            "    bit map start address: 0x%x\n"
@@ -243,19 +242,19 @@ void MemoryManager::initialize()
            kernelVirtualBitMapStart,
            kernelVirtualPrivilegeStart);
     
-    printf("Free Node List:\n"
+    kprintf("Free Node List:\n"
             "   kernel start address: 0x%x\n"
             "   user start address: 0x%x\n",
             kernelPAFreeNodeListStart,
             userPAFreeNodeListStart);
 
-    printf("Free Node Bit Map:\n"
+    kprintf("Free Node Bit Map:\n"
             "   kernel start address: 0x%x\n"
             "   user start address: 0x%x\n",
             kernelPAFreeNodeBitMapStart,
             userPAFreeNodeBitMapStart);            
     
-    printf("RMap\n"
+    kprintf("RMap\n"
             "   node list start address: 0x%x\n"
             "   total nodes: %d\n"
             "   bit map start address: 0x%x\n",
@@ -263,7 +262,7 @@ void MemoryManager::initialize()
             RMapNodeListSize,
             RMapBitMapStart);
     
-    printf("PageInfo\n"
+    kprintf("PageInfo\n"
             "   start address: 0x%x\n",
             (int)pageinfos);
 }

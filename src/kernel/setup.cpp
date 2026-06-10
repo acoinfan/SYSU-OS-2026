@@ -1,18 +1,18 @@
 #include "asm_utils.h"
 #include "interrupt.h"
-#include "stdio.h"
+#include "screen.h"
 #include "program.h"
 #include "thread.h"
 #include "sync.h"
 #include "memory.h"
 #include "address_pool.h"
 #include "tss.h"
-#include "syscall.h"
+#include "system_service.h"
 #include "test.h"
 #include "debug.h"
 
 // 屏幕IO处理器
-STDIO stdio;
+SCREEN screen;
 // 中断管理器
 InterruptManager interruptManager;
 // 程序管理器
@@ -54,48 +54,48 @@ void first_thread(void *arg)
     char *p2 = (char *)memoryManager.allocatePages(AddressPoolType::KERNEL, 10, VP_RW);
     char *p3 = (char *)memoryManager.allocatePages(AddressPoolType::KERNEL, 100, VP_RW);
 
-    printf("%x %x %x\n", p1, p2, p3);
+    kprintf("%x %x %x\n", p1, p2, p3);
     *p3 = 0xFF;
 
     memoryManager.releasePages(AddressPoolType::KERNEL, (int)p2, 10);
     p2 = (char *)memoryManager.allocatePages(AddressPoolType::KERNEL, 100, VP_RW);
 
-    printf("%x\n", p2);
+    kprintf("%x\n", p2);
 
     p2 = (char *)memoryManager.allocatePages(AddressPoolType::KERNEL, 10, VP_RW);
     
-    printf("%x\n", p2);
-    printf("0x100000 %x ;", *(int*)0x100000);
+    kprintf("%x\n", p2);
+    kprintf("0x100000 %x ;", *(int*)0x100000);
     // 获取0x100000对应的PTE信息,储存在0x101000 + 4 * 256
-    printf("0x101400 %x\n", *(int*)0x101400);
+    kprintf("0x101400 %x\n", *(int*)0x101400);
 
-    printf("Try to access 0x101000\n");
+    kprintf("Try to access 0x101000\n");
     int value0 = *(int*) 0x101000;
-    printf("value = %d\n", value0);
+    kprintf("value = %d\n", value0);
     *(int*) 0x101000 = value0;
-    printf("after value = %d\n", *(int*) 0x101000);
+    kprintf("after value = %d\n", *(int*) 0x101000);
 
-    printf("Try to access 0xC0101000\n");
+    kprintf("Try to access 0xC0101000\n");
     int value1 = *(int*) 0xC0101000;
-    printf("value = %d\n", value1);
+    kprintf("value = %d\n", value1);
     *(int*) 0xC0101000 = 114514;
-    printf("after value = %d\n", *(int*) 0xC0101000);
+    kprintf("after value = %d\n", *(int*) 0xC0101000);
 
-    printf("Try to access 0x40000000\n");
+    kprintf("Try to access 0x40000000\n");
     int value2 = *(int*) 0x40000000;
-    printf("value = %d\n", value2);
+    kprintf("value = %d\n", value2);
     *(int*) 0x40000000 = 114514;
     asm_halt();
 }
 
 void idle_thread(void* arg) {
-    printf("start idle, pid = 0\n");
+    kprintf("start idle, pid = 0\n");
 
     programManager.executeProcess((const char *)init_process, 0, 1);
     // programManager.executeProcess((const char *)stack_test, 1, 1);
     // programManager.executeProcess((const char *)COW_writer, 1, 1);
     // programManager.executeProcess((const char *)COW_reader, 1, 1);
-    printf("Load Done\n");
+    kprintf("Load Done\n");
     uint32 count = 0;
     // sleep
 
@@ -125,7 +125,7 @@ extern "C" void setup_kernel()
     interruptManager.enableTimeInterrupt();
 
     // 输出管理器
-    stdio.initialize();
+    screen.initialize();
 
     // 进程/线程管理器
     programManager.initialize(SchedulerType::RR);
@@ -140,7 +140,7 @@ extern "C" void setup_kernel()
     int pid = programManager.executeThread(idle_thread, nullptr, "idle thread", 1, true);
     if (pid == -1)
     {
-        printf("can not execute thread\n");
+        kprintf("can not execute thread\n");
         asm_halt();
     }
 

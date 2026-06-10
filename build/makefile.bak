@@ -1,0 +1,107 @@
+ASM_COMPILER = nasm
+C_COMPILER   = gcc
+CXX_COMPILER = g++
+CXX_FLAGS    = -g -Wall -march=i386 -std=c++11 -m32 -nostdlib -fno-builtin -ffreestanding -fno-pic
+ASM_FLAGS    = -g -f elf32
+LINKER       = ld
+OBJCOPY      = objcopy
+
+SRCDIR        = ../src
+INCLUDE_PATH  = ../include
+RUNDIR        = ../run
+OBJDIR        = obj
+
+SHARED_CPP_SRCS   := $(wildcard $(SRCDIR)/shared/*.cpp)
+KERNEL_CPP_SRCS   := $(wildcard $(SRCDIR)/kernel/*.cpp)
+LIBUSER_CPP_SRCS  := $(wildcard $(SRCDIR)/libuser/*.cpp)
+BOOT_CPP_SRCS     := $(wildcard $(SRCDIR)/boot/*.cpp)
+
+SHARED_ASM_SRCS   := $(wildcard $(SRCDIR)/shared/*.asm)
+KERNEL_ASM_SRCS   := $(wildcard $(SRCDIR)/kernel/*.asm)
+LIBUSER_ASM_SRCS  := $(wildcard $(SRCDIR)/libuser/*.asm)
+BOOT_ASM_SRCS     := $(wildcard $(SRCDIR)/boot/*.asm)
+
+SHARED_CPP_OBJS   := $(patsubst $(SRCDIR)/shared/%.cpp,$(OBJDIR)/shared/%.o,$(SHARED_CPP_SRCS))
+KERNEL_CPP_OBJS   := $(patsubst $(SRCDIR)/kernel/%.cpp,$(OBJDIR)/kernel/%.o,$(KERNEL_CPP_SRCS))
+LIBUSER_CPP_OBJS  := $(patsubst $(SRCDIR)/libuser/%.cpp,$(OBJDIR)/libuser/%.o,$(LIBUSER_CPP_SRCS))
+BOOT_CPP_OBJS     := $(patsubst $(SRCDIR)/boot/%.cpp,$(OBJDIR)/boot/%.o,$(BOOT_CPP_SRCS))
+
+SHARED_ASM_OBJS   := $(patsubst $(SRCDIR)/shared/%.asm,$(OBJDIR)/shared/%.o,$(SHARED_ASM_SRCS))
+KERNEL_ASM_OBJS   := $(patsubst $(SRCDIR)/kernel/%.asm,$(OBJDIR)/kernel/%.o,$(KERNEL_ASM_SRCS))
+LIBUSER_ASM_OBJS  := $(patsubst $(SRCDIR)/libuser/%.asm,$(OBJDIR)/libuser/%.o,$(LIBUSER_ASM_SRCS))
+BOOT_ASM_OBJS     := $(patsubst $(SRCDIR)/boot/%.asm,$(OBJDIR)/boot/%.o,$(BOOT_ASM_SRCS))
+
+KERNEL_OBJS       := $(SHARED_CPP_OBJS) $(SHARED_ASM_OBJS) $(KERNEL_CPP_OBJS) $(KERNEL_ASM_OBJS)
+USER_OBJS         := $(SHARED_CPP_OBJS) $(SHARED_ASM_OBJS) $(LIBUSER_CPP_OBJS) $(LIBUSER_ASM_OBJS)
+BOOT_SUPPORT_OBJS := $(BOOT_CPP_OBJS) $(BOOT_ASM_OBJS)
+
+.PHONY: all build kernel user clean run debug gdb test
+
+all: build
+
+build: mbr.bin bootloader.bin kernel.bin
+	dd if=mbr.bin of=$(RUNDIR)/hd.img bs=512 count=1 seek=0 conv=notrunc
+	dd if=bootloader.bin of=$(RUNDIR)/hd.img bs=512 count=5 seek=1 conv=notrunc
+	dd if=kernel.bin of$(RUNDIR)/hd.img bs=512 count=145 seek=6 conv=notrunc
+
+# ----------------------------------------------------------------------
+# Boot sector + loader
+# ----------------------------------------------------------------------
+
+mbr.bin: $(SRCDIR)/boot/mbr.asm
+	$(ASM_COMPILER) -o $@ -f bin -I$(INCLUDE_PATH)/ $<
+
+BOOTLOADER_DEPS := $(OBJDIR)/shared/stdlib.o $(OBJDIR)/boot/page.o
+
+bootloader.bin: $(SRCDIR)/boot/bootloader.asm $(BOOTLOADER_DEPS)
+	$(ASM_COMPILER) -o bootloader.o $(ASM_FLAGS) -I$(INCLUDE_PATH)/ $<
+	$(LINKER) -o bootloader.obj -melf_i386 -N bootloader.o $(BOOTLOADER_DEPS) -Ttext 0x7e00 -e bootloader_start
+	$(OBJCOPY) -O binary bootloader.obj $@
+
+entry.obj: $(SRCDIR)/boot/entry.asm
+	$(ASM_COMPILER) -o $@ $(ASM_FLAGS) $<
+
+# ----------------------------------------------------------------------
+# Kernel image
+# ----------------------------------------------------------------------
+
+kernel.bin: kernel.o
+	$(OBJCOPY) -O binary $< $@
+
+kernel.o: entry.obj $(KERNEL_OBJS)
+	$(LINKER) -o $@ -melf_i386 -N entry.obj $(KERNEL_OBJS) -Ttext 0xc0020000 -e enter_kernel
+
+# ----------------------------------------------------------------------
+# User support (shared + libuser)
+# ----------------------------------------------------------------------
+
+user: $(USER_OBJS)
+	@echo "user objects ready: $^"
+
+# ----------------------------------------------------------------------
+# Generic build rules
+# ----------------------------------------------------------------------
+
+$(OBJDIR)/%/%.o: $(SRCDIR)/%/%.cpp
+	@mkdir -p $(dir $@)
+	$(CXX_COMPILER) $(CXX_FLAGS) -I$(INCLUDE_PATH) -c $< -o $@
+
+$(OBJDIR)/%/%.o: $(SRCDIR)/%/%.asm
+	@mkdir -p $(dir $@)
+	$(ASM_COMPILER) -o $@ $(ASM_FLAGS) -I$(INCLUDE_PATH)/ $<
+
+clean:
+	rm -f *.o *.obj *.bin bootloader.o entry.obj bootloader.obj
+	rm -rf $(OBJDIR)
+
+run:
+	qemu-system-i386 -hda $(RUNDIR)/hd.img -display curses
+
+debug:
+	qemu-system-i386 -S -s -hda $(RUNDIR)/hd.img
+
+gdb:
+	gdb -x gdbinit
+
+test:
+	@echo "kernel objects: $(KERNEL_OBJS)"

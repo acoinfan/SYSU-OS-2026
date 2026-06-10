@@ -2,7 +2,7 @@
 #include "os_type.h"
 #include "os_constant.h"
 #include "asm_utils.h"
-#include "stdio.h"
+#include "screen.h"
 #include "os_modules.h"
 #include "program.h"
 #include "handler.h"

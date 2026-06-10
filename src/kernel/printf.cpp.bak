@@ -1,0 +1,592 @@
+#include "printf.h"
+
+inline void* memset(void* ptr, int value, unsigned n) {
+    unsigned char* p = (unsigned char*)ptr;
+    for (unsigned i = 0; i < n; i++) {
+        p[i] = (unsigned char)value;
+    }
+    return ptr;
+}
+
+inline int put_string(const char* const string) {
+    return stdio.print(string);
+}
+
+int flush_buffer(Buffer* buf) {
+    int end = BUF_SIZE > buf->idx ? buf->idx: BUF_SIZE;
+    buf->str[end] = '\0';
+    put_string(buf->str);
+    memset(buf, 0, sizeof(Buffer)); 
+    return end != 0;
+}
+
+void init_buffer(Buffer* buf) {
+    memset(buf->str, 0, BUF_SIZE + 1); 
+    buf->idx = 0;
+    return;
+}
+
+int add_char_to_buffer(Buffer* buf, char c) {
+    int counter = 1;
+    if (buf->idx >= BUF_SIZE) {
+        flush_buffer(buf);
+    }
+    buf->str[buf->idx++] = c;
+    return counter;
+}
+
+int add_str_to_buffer(Buffer* buf, const char* const str) {
+    int counter = 0;
+    for (int i = 0; str[i]; ++i) {
+        counter += add_char_to_buffer(buf, str[i]);
+    }
+    return counter;
+}
+
+inline int add_pad_to_buffer(Buffer* buf, char pad, int num) {
+    int counter = 0;
+    for (int i = 0; i < num; i++) {
+        counter += add_char_to_buffer(buf, pad);
+    }
+    return counter;
+}
+Format analyse_format(const char *const fmt, int* idx) {
+    ++(*idx);
+    Format format;
+    while (format.valid) {
+        switch (fmt[*idx]) {
+            case 'd':
+            case 'i':
+            case 'u':
+            case 'x':
+            case 'c':
+            case 's':
+            case 'p':
+                format.specifier = fmt[*idx];
+                return format;
+            case '0':
+                if (!format.zero_pad)
+                    format.zero_pad = true;
+                else
+                    format.valid = false;
+                break;
+            case '-':
+                if (!format.left_align)
+                    format.left_align = true;
+                else
+                    format.valid = false;
+                break;
+            case 'l':   
+                if (format.length == format.LEN_INT)
+                    format.length = format.LEN_LONG;
+                #ifdef PLATFORM_64BIT
+                else if (format.length == format.LEN_LONG)
+                    format.length = format.LEN_LLONG;
+                #endif
+                else
+                    format.valid = false;
+                break;
+            case '1':
+            case '2':
+            case '3':
+            case '4':
+            case '5':
+            case '6':
+            case '7':
+            case '8':
+            case '9': {
+                if (format.width != DEFAULT_WIDTH) {
+                    format.valid = false;
+                    break;
+                }
+                int sum = 0;
+                while (fmt[*idx] >= '0' && fmt[*idx] <= '9') {
+                    sum *= 10;
+                    sum += (fmt[*idx] - '0');
+                    (*idx)++;
+                }
+                (*idx)--;
+                format.width = sum;
+                break;
+            }
+
+            default:
+                format.valid = 0;
+                return format;
+        }
+        (*idx)++;
+    }
+    return format;
+}
+
+int varg_to_buffer(Buffer* buf, Format format, va_list* ap) {
+    int counter = 0;
+    switch (format.specifier) {
+        case 'p': {
+            void* ptr = va_arg(*ap, void*);
+            #ifdef PLATFORM_64BIT
+            char* str = hexify((unsigned long long)ptr);
+            #else
+            char* str = hexify((unsigned long)ptr);
+            #endif
+            counter += add_str_to_buffer(buf, "0x");
+            counter += add_str_to_buffer(buf, str);
+            break;
+        }
+
+        case 's': {
+            char* str = va_arg(*ap, char*);
+            counter += add_str_to_buffer(buf, str);
+            break;
+        }
+
+        case 'c': {
+            char c = va_arg(*ap, int);
+            counter += add_char_to_buffer(buf, c);
+            break;
+        }
+
+
+        case 'd':
+        case 'i': {
+            #ifdef PLATFORM_64BIT
+            long long num;
+            #else
+            long num;
+            #endif
+
+            switch (format.length) {
+                case format.LEN_INT:
+                    num = va_arg(*ap, int);
+                    break;
+                case format.LEN_LONG:
+                    num = va_arg(*ap, long);
+                    break;
+                #ifdef PLATFORM_64BIT
+                case format.LEN_LLONG:
+                    num = va_arg(*ap, long long);
+                    break;
+                #endif
+            }
+            char* str = sign_decify(num);
+            unsigned length = my_strlen(str);
+
+            if (length < format.width) {
+                if (format.left_align) {
+                    counter += add_str_to_buffer(buf, str);
+                    counter += add_pad_to_buffer(buf, ' ', format.width - length);
+                } else {
+                    // right_align
+                    int negative = str[0] == '-';
+                    if (format.zero_pad && negative) {
+                        // [-0000012] %08d -12
+                        counter += add_char_to_buffer(buf, '-');
+                        counter += add_pad_to_buffer(buf, '0', format.width - length);
+                        counter += add_str_to_buffer(buf, str+1);
+                    } else if (format.zero_pad && !negative) {
+                        // [00000012] %08d 12
+                        counter += add_pad_to_buffer(buf, '0', format.width - length);
+                        counter += add_str_to_buffer(buf, str);
+                    } else if (!format.zero_pad && negative) {
+                        // [     -12] %8d -12
+                        counter += add_pad_to_buffer(buf, ' ', format.width - length);
+                        counter += add_char_to_buffer(buf, '-');
+                        counter += add_str_to_buffer(buf, str+1);                        
+                    } else {
+                        // [      12] %8d 12
+                        counter += add_pad_to_buffer(buf, ' ', format.width - length);
+                        counter += add_str_to_buffer(buf, str);                        
+                    }
+                }
+            } else {
+                counter += add_str_to_buffer(buf, str);
+            }
+
+            break;
+        }
+
+
+        case 'u': {
+            #ifdef PLATFORM_64BIT
+            unsigned long long num;
+            #else
+            unsigned long num;
+            #endif
+            
+            switch (format.length) {
+                case format.LEN_INT:
+                    num = va_arg(*ap, unsigned);
+                    break;
+                case format.LEN_LONG:
+                    num = va_arg(*ap, unsigned long);
+                    break;
+                #ifdef PLATFORM_64BIT
+                case format.LEN_LLONG:
+                    num = va_arg(*ap, unsigned long long);
+                    break;
+                #endif
+            }
+
+            char* str = unsign_decify(num);
+            unsigned length = my_strlen(str);
+
+            if (length < format.width) {
+                if (format.left_align) {
+                    counter += add_str_to_buffer(buf, str);
+                    counter += add_pad_to_buffer(buf, ' ', format.width - length);
+                } else if (format.zero_pad) {
+                    counter += add_pad_to_buffer(buf, '0', format.width - length);
+                    counter += add_str_to_buffer(buf, str);
+                } else {
+                    counter += add_pad_to_buffer(buf, ' ', format.width - length);
+                    counter += add_str_to_buffer(buf, str);
+                }
+            } else {
+                counter += add_str_to_buffer(buf, str);
+            }
+            break;
+        }
+
+
+        case 'x': {
+            #ifdef PLATFORM_64BIT
+            unsigned long long num;
+            #else
+            unsigned long num;
+            #endif
+            
+            switch (format.length) {
+                case format.LEN_INT:
+                    num = va_arg(*ap, unsigned);
+                    break;
+                case format.LEN_LONG:
+                    num = va_arg(*ap, unsigned long);
+                    break;
+                #ifdef PLATFORM_64BIT
+                case format.LEN_LLONG:
+                    num = va_arg(*ap, unsigned long long);
+                    break;
+                #endif
+            }
+
+            char* str = hexify(num);
+            unsigned length = my_strlen(str);
+
+            if (length < format.width) {
+                if (format.left_align) {
+                    counter += add_str_to_buffer(buf, str);
+                    counter += add_pad_to_buffer(buf, ' ', format.width - length);
+                } else if (format.zero_pad) {
+                    counter += add_pad_to_buffer(buf, '0', format.width - length);
+                    counter += add_str_to_buffer(buf, str);
+                } else {
+                    counter += add_pad_to_buffer(buf, ' ', format.width - length);
+                    counter += add_str_to_buffer(buf, str);
+                }
+            } else {
+                counter += add_str_to_buffer(buf, str);
+            }
+            break;
+        }
+    }
+    return counter;
+}
+
+inline unsigned my_strlen(const char* const ptr) {
+    unsigned size = 0;
+    while (ptr[size]) {
+        size++;
+    }
+    return size;
+}
+
+#ifdef PLATFORM_64BIT
+char* sign_decify(long long number) {
+    static char buf[MAX_NUM_LENGTH + 1];
+
+    int idx = MAX_NUM_LENGTH;
+    buf[idx] = '\0';
+
+    bool negative = false;
+
+    if (number < 0) {
+        negative = true;
+        number = -number;
+    }
+
+    if (number == 0) {
+        buf[--idx] = '0';
+    }
+
+    while (number > 0) {
+        buf[--idx] = '0' + (number % 10);
+        number /= 10;
+    }
+
+    if (negative) {
+        buf[--idx] = '-';
+    }
+
+    return &buf[idx];
+}
+
+char* unsign_decify(unsigned long long number) {
+    static char buf[MAX_NUM_LENGTH + 1];
+
+    int idx = MAX_NUM_LENGTH;
+    buf[idx] = '\0';
+
+    if (number == 0) {
+        buf[--idx] = '0';
+    }
+
+    while (number > 0) {
+        buf[--idx] = '0' + (number % 10);
+        number /= 10;
+    }
+
+    return &buf[idx];
+}
+
+char* hexify(unsigned long long number) {
+    static char buf[MAX_NUM_LENGTH + 1];
+
+    static const char table[16] = {'0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f'};
+
+    int idx = MAX_NUM_LENGTH;
+    buf[idx] = '\0';
+
+    if (number == 0) {
+        buf[--idx] = '0';
+    }
+
+    while (number > 0) {
+        buf[--idx] = table[number % 16];
+        number /= 16;
+    }
+    return &buf[idx];
+}
+
+#else
+char* sign_decify(long number) {
+    static char buf[MAX_NUM_LENGTH + 1];
+
+    int idx = MAX_NUM_LENGTH;
+    buf[idx] = '\0';
+
+    bool negative = false;
+
+    if (number < 0) {
+        negative = true;
+        number = -number;
+    }
+
+    if (number == 0) {
+        buf[--idx] = '0';
+    }
+
+    while (number > 0) {
+        buf[--idx] = '0' + (number % 10);
+        number /= 10;
+    }
+
+    if (negative) {
+        buf[--idx] = '-';
+    }
+
+    return &buf[idx];
+}
+
+char* unsign_decify(unsigned long number) {
+    static char buf[MAX_NUM_LENGTH + 1];
+
+    int idx = MAX_NUM_LENGTH;
+    buf[idx] = '\0';
+
+    if (number == 0) {
+        buf[--idx] = '0';
+    }
+
+    while (number > 0) {
+        buf[--idx] = '0' + (number % 10);
+        number /= 10;
+    }
+
+    return &buf[idx];
+}
+
+char* hexify(unsigned long number) {
+    static char buf[MAX_NUM_LENGTH + 1];
+
+    static const char table[16] = {'0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f'};
+
+    int idx = MAX_NUM_LENGTH;
+    buf[idx] = '\0';
+
+    if (number == 0) {
+        buf[--idx] = '0';
+    }
+
+    while (number > 0) {
+        buf[--idx] = table[number % 16];
+        number /= 16;
+    }
+    return &buf[idx];
+}
+#endif
+
+int printf(const char *const fmt, ...) {
+    Buffer buf;
+    va_list ap;
+    va_start(ap, fmt);
+    init_buffer(&buf);
+
+    int counter = 0;
+    for (int i = 0; fmt[i]; ++i) {
+        if (fmt[i] == '%' && fmt[i+1] == '%') {
+            counter += add_char_to_buffer(&buf, '%');
+            i++;
+        } else if (fmt[i] == '%' && fmt[i+1] != '%') {
+            Format format = analyse_format(fmt, &i);
+            if (!format.valid) {
+                return -1;
+            }
+            counter += varg_to_buffer(&buf, format, &ap);
+        } else {
+            counter += add_char_to_buffer(&buf, fmt[i]);
+        }
+    }
+    va_end(ap);
+    flush_buffer(&buf);
+    return counter;
+}
+
+void test() {
+    printf("========== BASIC ==========\n");
+
+    printf("hello world\n");
+    printf("plain text only\n");
+
+
+    printf("========== CHAR ==========\n");
+
+    printf("%c\n", 'A');
+    printf("%c%c%c\n", 'a', 'b', 'c');
+
+
+    printf("========== STRING ==========\n");
+
+    printf("%s\n", "hello");
+    printf("[%10s]\n", "abc");
+    printf("[%-10s]\n", "abc");
+
+
+    printf("========== SIGNED DECIMAL ==========\n");
+
+    printf("%d\n", 0);
+    printf("%d\n", 123);
+    printf("%d\n", -123);
+
+    printf("[%5d]\n", 123);
+    printf("[%5d]\n", -123);
+
+    printf("[%-5d]\n", 123);
+    printf("[%-5d]\n", -123);
+
+    printf("[%05d]\n", 123);
+    printf("[%05d]\n", -123);
+
+    printf("[%2d]\n", 12345);
+
+
+    printf("========== UNSIGNED ==========\n");
+
+    printf("%u\n", 0u);
+    printf("%u\n", 123u);
+    printf("%u\n", 4294967295u);
+
+    printf("[%8u]\n", 123u);
+    printf("[%08u]\n", 123u);
+    printf("[%-8u]\n", 123u);
+
+
+    printf("========== HEX ==========\n");
+
+    printf("%x\n", 0);
+    printf("%x\n", 255);
+    printf("%x\n", 0xdeadbeef);
+
+    printf("[%8x]\n", 0xabc);
+    printf("[%08x]\n", 0xabc);
+    printf("[%-8x]\n", 0xabc);
+
+
+    printf("========== POINTER ==========\n");
+
+    int x = 123;
+    printf("%p\n", &x);
+
+
+    printf("========== LONG ==========\n");
+
+    long a = 1234567890L;
+    printf("%ld\n", a);
+
+    long long b = 123456789012345LL;
+    printf("%lld\n", b);
+
+    unsigned long long c = 18446744073709551615ULL;
+    printf("%llu\n", c);
+
+
+    printf("========== MIXED ==========\n");
+
+    printf(
+        "%d %u %x %lld %llu %s %c\n",
+        -123,
+        456u,
+        0xabc,
+        -1234567890123LL,
+        1234567890123ULL,
+        "hello",
+        'Z'
+    );
+
+
+    printf("========== MULTI ARG ==========\n");
+
+    printf("%d %d %d\n", 1, 2, 3);
+    printf("%s %d %x\n", "abc", 123, 255);
+
+
+    printf("========== ZERO EDGE ==========\n");
+
+    printf("%d\n", 0);
+    printf("%u\n", 0u);
+    printf("%x\n", 0u);
+
+
+    printf("========== NEGATIVE + ZERO PAD ==========\n");
+
+    printf("[%08d]\n", -123);
+    printf("[%-8d]\n", -123);
+    printf("[%8d]\n", -123);
+
+
+    printf("========== LARGE WIDTH ==========\n");
+
+    printf("[%20d]\n", 123);
+    printf("[%020d]\n", 123);
+    printf("[%-20d]\n", 123);
+
+
+    printf("========== FORMAT PARSER ==========\n");
+
+    printf("%05d\n", 123);
+    printf("%-5d\n", 123);
+    printf("%08lld\n", 123LL);
+    printf("%0000012d\n", 123);
+
+    printf("%ldl\n", 123L);
+
+    printf("========== END ==========\n");

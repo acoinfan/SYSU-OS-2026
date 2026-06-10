@@ -2,7 +2,7 @@
 #include "stdlib.h"
 #include "interrupt.h"
 #include "asm_utils.h"
-#include "stdio.h"
+#include "screen.h"
 #include "thread.h"
 #include "os_modules.h"
 

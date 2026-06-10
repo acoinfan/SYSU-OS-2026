@@ -2,10 +2,10 @@
 #include "stdlib.h"
 #include "interrupt.h"
 #include "asm_utils.h"
-#include "stdio.h"
+#include "screen.h"
 #include "thread.h"
 #include "os_modules.h"
-#include "syscall.h"
+#include "system_service.h"
 #include "debug.h"
 
 const int PCB_SIZE = 4096;                   // PCB的大小，4KB。

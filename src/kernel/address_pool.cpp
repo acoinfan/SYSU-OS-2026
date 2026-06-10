@@ -1,8 +1,8 @@
 #include "address_pool.h"
 #include "os_modules.h"
-#include "assert.h"
+#include "debug.h"
 #include "stdlib.h"
-#include "syscall.h"
+#include "system_service.h"
 #include "asm_utils.h"
 
 // 初始化地址池
