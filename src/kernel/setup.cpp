@@ -10,6 +10,7 @@
 #include "system_service.h"
 #include "test.h"
 #include "debug.h"
+#include "init.h"
 
 // 屏幕IO处理器
 SCREEN screen;
@@ -91,11 +92,7 @@ void first_thread(void *arg)
 void idle_thread(void* arg) {
     kprintf("start idle, pid = 0\n");
 
-    programManager.executeProcess((const char *)init_process, 0, 1);
-    // programManager.executeProcess((const char *)stack_test, 1, 1);
-    // programManager.executeProcess((const char *)COW_writer, 1, 1);
-    // programManager.executeProcess((const char *)COW_reader, 1, 1);
-    kprintf("Load Done\n");
+    programManager.executeProcess((const char *)init, 0, 1);
     uint32 count = 0;
     // sleep
 

@@ -88,7 +88,7 @@ void COW_reader() {
 
 void fork_test() {
     int pid = fork();
-    write("[fork_test] fork returned\n");
+    printf("[fork_test] call Fork_test\n");
     int cur_pid = getpid();
 
     if (pid == -1)
@@ -99,29 +99,24 @@ void fork_test() {
     {
         if (pid)
         {
-            char str1[] = "I am father, waiting to rape the child\n";
-            char str2[] = "Father Rape his child\n";
-
-            printf(str1);
-            waitpid(pid, nullptr);
-            write(str2);
+            printf("I am father, pid = %d, waiting to rape the child\n", getpid());
+            int sonPid = waitpid(pid, nullptr);
+            printf("Father Rape his child (pid = %d)\n", sonPid);
         }
         else
         {
-            char str1[] = "I am child\n";
-            write(str1);
+            printf("I am child, pid = %d\n", getpid());
             char str3[] = "Child is waiting for his child\n";
             char str4[] = "Child Rape his child\n";
             if (fork() == 0) {
-                char str2[] = "I am child of child\n";
-                write(str2);
+                printf("I am child of child, pid = %d\n", getpid());
                 execveFunc((uint32)test_print_something);
                 // NEVER REACH HERE
                 write("FAULT!!!!!!!\n");
             } else {
-                write(str3);
-                wait(nullptr);
-                write(str4);
+                printf("Child is waiting for his child\n");
+                int sonPid = wait(nullptr);
+                printf("Child Rape his child (pid = %d)\n", sonPid);
             }
         }
     }
@@ -136,31 +131,4 @@ void stack_test() {
 
     write("done\n");
     return;
-}
-
-void init_process(void* arg) {
-    write("start init, pid = 1\n");
-    pa_dump();
-    int count = 0;
-
-    if (fork() == 0) {
-        execveFunc((uint32)fork_test);
-        return;
-    }
-    while (true)
-    {
-        if (wait(nullptr) == -1)
-        {
-            if (count == 0) {
-                write("init try to rape~~~\n");
-            }
-            count++;
-            if (count == 50) {
-                count = 0;
-            }
-            yield();
-            continue;
-        }
-        ;
-    }
 }

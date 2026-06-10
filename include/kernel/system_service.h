@@ -20,43 +20,43 @@ public:
 int sys_write(int fd, const char* buf, int len);
 
 // 6
-int pte_dump(uint32 vaddr);
+int k_pte_dump(uint32 vaddr);
 int syscall_pte_dump(uint32 vaddr);
 
-void pa_dump();
+void k_pa_dump();
 void syscall_pa_dump();
 
 // 第1个系统调用, write
-int write(const char *str);
+int k_write(const char *str);
 int syscall_write(const char *str);
 
 // 第2个系统调用, fork
-int fork();
+int k_fork();
 int syscall_fork();
 
 // 第3个系统调用, exit
-void exit(int ret);
+void k_exit(int ret);
 void syscall_exit(int ret);
 
 // 第4个系统调用, wait
-int wait(int *retval);
-int waitpid(int pid, int *retval);
+int k_wait(int *retval);
+int k_waitpid(int pid, int *retval);
 int syscall_wait(int pid, int *retval);
 
 // 第5个系统调用, move cursor
-void move_cursor(int i, int j);
+void k_move_cursor(int i, int j);
 void syscall_move_cursor(int i, int j);
 
-uint16 getpid();
+uint16 k_getpid();
 uint16 syscall_getpid();
 
-uint16 getppid();
+uint16 k_getppid();
 uint16 syscall_getppid();
 
-void yield();
+void k_yield();
 void syscall_yield();
 
-void execveFunc(uint32 func);
+void k_execveFunc(uint32 func);
 void syscall_execveFunc(uint32 func);
 
 #endif

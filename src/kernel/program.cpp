@@ -609,7 +609,7 @@ void load_process(const void *entry)
         LOG_TRACE("[load_process] entry=0x%x lazy_stack=0x%x pid=%d\n", (uint32)entry, addr, process->pid);
         int *userStack = (int *)interruptStack->esp;
         userStack -= 3;
-        userStack[0] = (int)exit;
+        userStack[0] = (int)k_exit;
         userStack[1] = 0;
         userStack[2] = 0;
         interruptStack->esp = (uint32)userStack; 
@@ -1043,7 +1043,7 @@ int ProgramManager::execve(const char *filename, char *const argv[], char *const
     uint32 user_esp = STACK_TOP - 4; 
     user_esp -= 12;                  
     int *userStack = (int *)user_esp;
-    userStack[0] = (int)::exit;        // 对应 esp
+    userStack[0] = (int)k_exit;        // 对应 esp
     userStack[1] = 0;                // 对应 esp + 4 (argc)
     userStack[2] = 0;                // 对应 esp + 8 (argv)
 

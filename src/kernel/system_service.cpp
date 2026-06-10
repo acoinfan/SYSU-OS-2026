@@ -46,51 +46,51 @@ int sys_write(int fd, const char* buf, int len)
     return len;
 }
 
-int pte_dump(uint32 vaddr) {
+int k_pte_dump(uint32 vaddr) {
     return asm_system_call(SYS_PTE_DUMP, vaddr);
 }
 
-void pa_dump() {
+void k_pa_dump() {
     asm_system_call(SYS_PA_DUMP);
 }
 
-uint16 getpid() {
+uint16 k_getpid() {
     return asm_system_call(SYS_GETPID);
 }
 
-uint16 getppid() {
+uint16 k_getppid() {
     return asm_system_call(SYS_GETPPID);
 }
 
-int fork() {
+int k_fork() {
     return asm_system_call(SYS_FORK);
 }
 
-int write(const char *str) {
+int k_write(const char *str) {
     return asm_system_call(SYS_WRITE, (int)str);
 }
 
-void exit(int ret) {
+void k_exit(int ret) {
     asm_system_call(SYS_EXIT, ret);
 }
 
-int wait(int *retval) {
-    waitpid(-1, retval);
+int k_wait(int *retval) {
+    k_waitpid(-1, retval);
 }
 
-int waitpid(int pid, int *retval) {
+int k_waitpid(int pid, int *retval) {
     return asm_system_call(SYS_WAIT, pid, (int)retval);
 }
 
-void move_cursor(int i, int j) {
+void k_move_cursor(int i, int j) {
     asm_system_call(SYS_MOVE_CURSOR, i, j);
 }
 
-void yield() {
+void k_yield() {
     asm_system_call(SYS_YIELD);
 }
 
-void execveFunc(uint32 func) {
+void k_execveFunc(uint32 func) {
     asm_system_call(SYS_EXECFUNC, func);
 }
 
