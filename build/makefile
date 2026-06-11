@@ -27,6 +27,7 @@ image: libs builtin boot kernel
 	dd if=$(OBJDIR)/boot/mbr.bin of=$(RUNDIR)/hd.img bs=512 count=1 seek=0 conv=notrunc
 	dd if=$(OBJDIR)/boot/bootloader.bin of=$(RUNDIR)/hd.img bs=512 count=5 seek=1 conv=notrunc
 	dd if=$(OBJDIR)/boot/kernel.bin of=$(RUNDIR)/hd.img bs=512 count=145 seek=6 conv=notrunc
+	dd if=/dev/zero of=$(RUNDIR)/test.img bs=1M count=16
 
 clean:
 	$(MAKE) -C ../src/libc clean
@@ -35,10 +36,10 @@ clean:
 	$(MAKE) -C ../src/kernel clean
 
 run:
-	qemu-system-i386 -hda $(RUNDIR)/hd.img -display curses
+	qemu-system-i386 -hda $(RUNDIR)/hd.img -hdb $(RUNDIR)/test.img -display curses
 
 debug:
-	qemu-system-i386 -S -s -hda $(RUNDIR)/hd.img
+	qemu-system-i386 -S -s -hda $(RUNDIR)/hd.img -hdb $(RUNDIR)/test.img
 
 gdb:
 	gdb -x gdbinit

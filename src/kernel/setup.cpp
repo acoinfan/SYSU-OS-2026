@@ -12,6 +12,7 @@
 #include "debug.h"
 #include "init.h"
 
+// #include "fileSys/disk_driver.h" // for debug
 // 屏幕IO处理器
 SCREEN screen;
 // 中断管理器
@@ -92,6 +93,17 @@ void first_thread(void *arg)
 void idle_thread(void* arg) {
     kprintf("start idle, pid = 0\n");
 
+    // debug: read write
+
+    // char buf1[512], buf2[512] = "deadbeef";
+    // ASSERT(ide_read_sector(IdeDrive::PrimarySlave, 0, buf1));
+    // kprintf("previous: \n");
+    // kprintf(buf1);
+    // ASSERT(ide_write_sector(IdeDrive::PrimarySlave, 0, buf2));
+    // ASSERT(ide_read_sector(IdeDrive::PrimarySlave, 0, buf1));
+    // kprintf("\nafter: \n");
+    // kprintf(buf1);
+    // end debug
     programManager.executeProcess((const char *)init, 0, 1);
     uint32 count = 0;
     // sleep

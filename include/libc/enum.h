@@ -143,4 +143,16 @@ enum SyscallType : uint8 {
     SYS_PA_DUMP,
     SYS_EXPANDHEAP
 };
+
+enum fs_type {
+    FXT12,
+    NONE
+};
+
+enum class IdeDrive : uint8 {
+    PrimaryMaster   = 0,    // hda
+    PrimarySlave    = 1,    // hdb
+    SecondaryMaster = 2,    // hdc
+    SecondarySlave  = 3,    // hdd
+};
 #endif

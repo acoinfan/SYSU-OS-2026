@@ -1,5 +1,5 @@
-#ifndef __VSPRINTF_H__
-#define __VSPRINTF_H__
+#ifndef VSPRINTF_H
+#define VSPRINTF_H
 
 #define DEFAULT_WIDTH 1
 #define MAX_NUM_LENGTH 128

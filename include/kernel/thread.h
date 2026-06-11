@@ -5,6 +5,7 @@
 #include "os_constant.h"
 #include "enum.h"
 #include "address_pool.h"
+#include "fileSys/file_manager.h"
 
 typedef void (*ThreadFunction)(void *);
 
@@ -47,6 +48,12 @@ struct ThreadStartStack {
     uint32 parameter;      // 传给 load_process 的参数 (elfConf.entry)
 };
 
+struct fs_context {
+    void*     current_fs;      // ⭐ 当前处于哪个文件系统实例（哪块盘）
+    uint16    cwd_cluster;     // 当前盘下的工作目录簇号
+    char      cwd_path[256];   // 绝对路径字符串（如 "/mnt/sdb/docs"）
+};
+
 // PCB占一个整页
 struct PCB
 {
@@ -72,6 +79,8 @@ struct PCB
     // char argv[MAX_ARGV_COUNT][MAX_ARGV_LENGTH];
     // int argc;
     // char** envp = nullptr;
+    fs_context fs_info;
+    File* fd_table;             // 最多256个
 };
 
 /*
