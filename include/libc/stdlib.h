@@ -25,6 +25,8 @@ unsigned strlen(const char* const ptr);
 
 char *strcpy(char *dest, const char *src);
 
+int strcmp(const char *cs, const char *ct);
+
 void *malloc(uint32 size);
 
 void free(void* ptr);
