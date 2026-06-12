@@ -27,7 +27,20 @@ image: libs builtin boot kernel
 	dd if=$(OBJDIR)/boot/mbr.bin of=$(RUNDIR)/hd.img bs=512 count=1 seek=0 conv=notrunc
 	dd if=$(OBJDIR)/boot/bootloader.bin of=$(RUNDIR)/hd.img bs=512 count=5 seek=1 conv=notrunc
 	dd if=$(OBJDIR)/boot/kernel.bin of=$(RUNDIR)/hd.img bs=512 count=145 seek=6 conv=notrunc
-	dd if=/dev/zero of=$(RUNDIR)/test.img bs=1M count=16
+	@mkdir -p $(RUNDIR)/test
+	dd if=/dev/zero of=$(RUNDIR)/test.img bs=1M count=8
+
+	mkfs.fat -F 12 -n TESTVOL $(RUNDIR)/test.img
+	          # 每扇区 512 bytes
+	           # 每簇 8 扇区
+	           # 根目录 512 entries → 32 sectors
+	           # FAT 表大小 12 sectors（可选，如果不指定 mkfs 会自动调整）
+	      # 卷标
+	
+
+	@if find $(RUNDIR)/test -mindepth 1 -print -quit >/dev/null 2>&1; then \
+		mcopy -i $(RUNDIR)/test.img -s $(RUNDIR)/test/* :: ; \
+	fi
 
 clean:
 	$(MAKE) -C ../src/libc clean

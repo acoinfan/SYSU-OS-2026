@@ -59,4 +59,7 @@
 
 #define ELF_SEGMENT_AMOUNT 0x8
 
+// File SYs
+// #define IRQ0_8259A_MASTER 0x20 
+// #define IRQ0_8259A_SLAVE 0x28
 #endif

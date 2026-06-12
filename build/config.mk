@@ -19,7 +19,7 @@ CXX_FLAGS = \
     -fno-rtti \
     -fno-threadsafe-statics
 
-ASM_FLAGS = -g -f elf32
+ASM_FLAGS = -g -F dwarf -f elf32
 ARFLAGS   = rcs
 
 ROOT       := $(realpath $(dir $(lastword $(MAKEFILE_LIST)))/..)

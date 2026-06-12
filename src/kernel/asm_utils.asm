@@ -24,10 +24,14 @@ global asm_save_process_context
 
 extern c_time_interrupt_handler
 extern system_call_table
+extern c_ide_primary_interrupt
+extern c_ide_secondary_interrupt
 
 global asm_page_fault_handler
 global asm_get_page_error_addr
 global asm_invlpg
+global asm_ide_primary_interrupt
+global asm_ide_secondary_interrupt
 
 extern c_page_fault_handler
 
@@ -469,3 +473,67 @@ asm_hello_world:
 
 asm_halt:
     jmp $
+
+; void asm_ide_primary_interrupt();
+asm_ide_primary_interrupt:
+    push ds
+    push es
+    push fs
+    push gs
+    pushad
+
+    mov ax, 0x10          ; 内核数据段选择子
+    mov ds, ax
+    mov es, ax
+
+    ; 读取状态寄存器 0x1F7
+    mov dx, 0x1F7
+    in al, dx                 ; 读状态清除 IRQ
+
+    mov dx, 0xA0        ; 从片
+    mov al, 0x20
+    out dx, al
+    mov dx, 0x20        ; 主片
+    out dx, al
+
+    call c_ide_primary_interrupt
+
+    popad
+    pop gs
+    pop fs
+    pop es
+    pop ds
+    add esp, 0            ; 占位，如需 error code 可在此修改
+    iretd
+
+; void asm_ide_secondary_interrupt();
+asm_ide_secondary_interrupt:
+    push ds
+    push es
+    push fs
+    push gs
+    pushad
+
+    mov ax, 0x10          ; 内核数据段选择子
+    mov ds, ax
+    mov es, ax
+
+        ; 读取状态寄存器 0x177
+    mov dx, 0x177
+    in al, dx                 ; 读状态清除 IRQ
+
+    mov dx, 0xA0        ; 从片
+    mov al, 0x20
+    out dx, al
+    mov dx, 0x20        ; 主片
+    out dx, al
+
+    call c_ide_secondary_interrupt
+
+    popad
+    pop gs
+    pop fs
+    pop es
+    pop ds
+    add esp, 0            ; 占位，如需 error code 可在此修改
+    iretd

@@ -26,25 +26,26 @@ $(OBJDIR)/kernel/%.o: %.asm
 	@mkdir -p $(dir $@)
 	$(ASM_COMPILER) -o $@ $(ASM_FLAGS) $(KERNEL_INCLUDE) $<
 
-# Link kernel.o
-$(OBJDIR)/boot/kernel.o: $(KERNEL_OBJS)
+# Link kernel.elf
+$(OBJDIR)/boot/kernel.elf: $(KERNEL_OBJS)
 	@mkdir -p $(dir $@)
 
 	$(LINKER) \
-	-o $@ \
-	-melf_i386 \
-	-N \
-	$(OBJDIR)/boot/entry.obj \
-	$(KERNEL_OBJS) \
-	$(BUILTIN_LIB) \
-	$(LIBC_LIB) \
-	-Ttext 0xc0020000 \
-	-e enter_kernel
+		-o $@ \
+		-melf_i386 \
+		-N \
+		$(OBJDIR)/boot/entry.obj \
+		$(KERNEL_OBJS) \
+		$(BUILTIN_LIB) \
+		$(LIBC_LIB) \
+		-Ttext 0xc0020000 \
+		-e enter_kernel
 
 # objcopy
-$(OBJDIR)/boot/kernel.bin: $(OBJDIR)/boot/kernel.o
+$(OBJDIR)/boot/kernel.bin: $(OBJDIR)/boot/kernel.elf
 	@mkdir -p $(dir $@)
-	$(OBJCOPY) -O binary $< $@
+	$(OBJCOPY) --only-keep-debug $< $(OBJDIR)/boot/kernel.sym
+	$(OBJCOPY) -O binary --strip-debug $< $@
 
 clean:
 	rm -rf $(OBJDIR)/kernel

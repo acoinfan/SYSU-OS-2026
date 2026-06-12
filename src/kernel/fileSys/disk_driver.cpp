@@ -39,7 +39,7 @@ bool ide_read_sector(IdeDrive drive, uint32 lba, void* buf) {
 
     // 选择目标盘并装载 LBA 高 4 位
     outb(ide_reg(channel, IDE_REG_DRIVE_SELECT), channel.drive_select | ((lba >> 24) & 0x0F));
-    ide_send_control(drive, 0);
+    ide_send_control(drive, 0x02);   // 不允许发送Interrupt
     ide_select_drive_delay(drive);
 
     // 设置待读扇区号与数量
@@ -102,7 +102,7 @@ bool ide_write_sector(IdeDrive drive, uint32 lba, const void* buf) {
     if (!ide_wait_ready(drive, 0)) {
         return false;
     }
-    ide_send_control(drive, 0);
+    ide_send_control(drive, 0x02);   // 不允许发送Interrupt
     outb(ide_reg(channel, IDE_REG_COMMAND), IDE_CMD_CACHE_FLUSH);
     if (!ide_wait_ready(drive, 0)) {
         return false;

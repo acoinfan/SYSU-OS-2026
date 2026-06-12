@@ -42,9 +42,10 @@ uint32 FAT12_FS::cluster2sector(uint16 cluster) {
 bool FAT12_FS::mount(IdeDrive disk) {
     // 务必保证fat12_BPB没有做padding
     ASSERT(sizeof(fat12_BPB) == 25);
+    memset(this, 0, sizeof(FAT12_FS));
 
     // 解析bpb
-    if (ide_read_sector(disk, 0, this->tmp_sector_buffer)) {
+    if (!ide_read_sector(disk, 0, this->tmp_sector_buffer)) {
         return false;
     }
 
@@ -69,13 +70,14 @@ bool FAT12_FS::mount(IdeDrive disk) {
         kprintf("Invalid Mount: sectors_per_cluster shoule be power of 2 instead %d\n", bpb.sectors_per_cluster);
         return false;         
     }
-    if (bpb.fat_size_16 % 3 != 0) {
-        kprintf("Invalid Mount: fat_size_16 should be divisible by 3 instead %d\n", bpb.fat_size_16);
+    if ((bpb.fat_size_16 * bpb.bytes_per_sector )% 3 != 0) {
+        kprintf("Invalid Mount: fat_size_16 * bytes_per_sector should be divisible by 3 instead %d\n", bpb.fat_size_16 * bpb.bytes_per_sector);
     }
 
     this->device = disk;
     this->access_time = 0;
 
+    this->root_entries = bpb.root_entry_count;
     this->root_sector_count = (bpb.root_entry_count * FAT12_ENTRY_BYTES + bpb.bytes_per_sector - 1) / bpb.bytes_per_sector;
 
     this->fat_start_sector = bpb.reserved_sector_count;
@@ -99,7 +101,14 @@ bool FAT12_FS::mount(IdeDrive disk) {
     }
 
     // 初始化inode_pool
-    inode_pool.initialize(FAT12_MAX_INODES);
+    inodepool.initialize(FAT12_MAX_INODES);
+
+    // 初始化root_dir
+    init_root_dir();
+    
+    // debug: 打印root_dir信息
+    dump_root_dir();
+    return true;
 }
 
 bool FAT12_FS::init_cache_pool() {
@@ -137,8 +146,9 @@ bool FAT12_FS::read_fat_table() {
     uint32 idx = 0;
 
     bool res = true;
-    // 遍历fat表, 每次读取三个sector
-    for (uint16 i = 0; i < total_fat_sectors; i += 3) {
+    // 遍历fat表, 每次读取三个sector, 最后余下的单独读取
+    uint16 first_part = total_fat_sectors - total_fat_sectors % 3;
+    for (uint16 i = 0; i < first_part; i += 3) {
         // 复制到tmp_sector_buffer
         res &= ide_read_sector(device, i + fat1_start_sector, tmp_sector_buffer);
         res &= ide_read_sector(device, i + 1 + fat1_start_sector, 
@@ -150,8 +160,8 @@ bool FAT12_FS::read_fat_table() {
             return false;
         }
         
-        // 读取512 * 3 / 1.5 = 1024个项
-        for (uint16 j = 0; j < 1024; j++, idx++) {
+        // 读取bytes_per_sector * 3 / 1.5个项
+        for (uint16 j = 0; j < bpb.bytes_per_sector / 2; j++, idx++) {
             uint32 offset = j + j/2; // 12bit -> 1.5B
             uint16 value;
             if ((idx & 1) == 0) {
@@ -160,6 +170,21 @@ bool FAT12_FS::read_fat_table() {
                 value = (tmp_sector_buffer[offset] >> 4) | (tmp_sector_buffer[offset+1] << 4);
             }
             fat_table[idx] = value;
+        }
+    }
+
+    uint16 entries_per_sector = bpb.bytes_per_sector * 8 / 12;
+    for (uint16 i = first_part; i < total_fat_sectors; i++) {
+        res &= ide_read_sector(device, i + fat1_start_sector, tmp_sector_buffer);
+        for (uint16 j = 0; j < entries_per_sector; j++, idx++) {
+            uint32 offset = j + j/2; // 12bit -> 1.5B
+            uint16 value;
+            if ((idx & 1) == 0) {
+                value = tmp_sector_buffer[offset] | ((tmp_sector_buffer[offset+1] & 0x0F) << 8);
+            } else {
+                value = (tmp_sector_buffer[offset] >> 4) | (tmp_sector_buffer[offset+1] << 4);
+            }
+            fat_table[idx] = value;            
         }
     }
     return res;
@@ -267,5 +292,80 @@ void FAT12_FS::free_cluster(uint16 idx) {
 }
 
 bool FAT12_FS::lookup(fat12_inode* dir, const char* name, fat12_inode* out) {
+    // 必须是属于该文件系统的dir
+    if (dir->fat12_fs != this) {
+        return false;
+    }
 
+    // 判断是否是根目录
+
+}
+
+bool FAT12_FS::init_root_dir() {
+    // 初始化root_table
+    uint32 root_bytes = this->root_entries * sizeof(fat12_normalized_entry);
+    uint32 root_pages = (root_bytes + PAGE_SIZE - 1) / PAGE_SIZE;
+    this->root_dir = (fat12_normalized_entry*)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, root_pages, VP_RW);
+    if (!this->root_dir) {
+        // TODO 记得释放
+        return false;
+    }
+
+    memset(this->root_dir, 0, root_bytes);
+
+    // 构建root_table
+    uint32 end_sector = this->root_sector_count + this->root_start_sector;
+    uint32 entry_idx = 0;
+    uint32 entry_per_sector = bpb.bytes_per_sector / FAT12_ENTRY_BYTES;
+    
+    bool finish = false;
+    entry_buf.reset();
+    for (uint32 sector_idx = this->root_start_sector; sector_idx < end_sector && !finish; sector_idx++) {
+        ide_read_sector(device, sector_idx, tmp_sector_buffer);
+        // 遍历sector内所有的entry
+        for (uint32 i = 0; i < entry_per_sector; i++) {
+            if (entry_buf.read(tmp_sector_buffer + FAT12_ENTRY_BYTES * i)) {
+                if (entry_idx < this->root_entries) {
+                    memcpy(&root_dir[entry_idx], &entry_buf.normalized_entry, sizeof(fat12_normalized_entry));
+                    entry_idx++;
+                }
+            } else if (entry_buf.status == fat12_entry_buf::fat12_entry_buf_status::END_OF_DIR) {
+                finish = true;
+            }
+        }
+    }
+    return true;
+}
+
+void FAT12_FS::dump_root_dir() {
+    kprintf("========== ROOT DIRECTORY ==========\n");
+    for (uint32 i = 0; i < root_entries; ++i) {
+        fat12_normalized_entry* entry = &root_dir[i];
+        if (entry->name[0] == '\0') continue;
+
+        unsigned int idx   = static_cast<unsigned int>(i);
+        unsigned int clust = static_cast<unsigned int>(entry->start_cluster);
+        unsigned int size  = static_cast<unsigned int>(entry->file_size);
+        unsigned int attr  = static_cast<unsigned int>(entry->attr);
+        unsigned int cdate = static_cast<unsigned int>(entry->create_date);
+        unsigned int ctime = static_cast<unsigned int>(entry->create_time);
+        unsigned int wdate = static_cast<unsigned int>(entry->write_date);
+        unsigned int wtime = static_cast<unsigned int>(entry->write_time);
+
+        kprintf(
+            "[%03u] %-20s cluster=%u size=%u attr=0x%02x "
+            "ctime=%04x/%04x wtime=%04x/%04x\n",
+            idx,
+            entry->name,
+            clust,
+            size,
+            attr,
+            cdate,
+            ctime,
+            wdate,
+            wtime
+        );
+    }
+
+    kprintf("====================================\n");
 }

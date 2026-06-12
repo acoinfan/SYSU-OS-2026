@@ -2,8 +2,9 @@
 #define FILE_MANAGER_H
 
 #include "os_type.h"
-#include "fat12_fs.h"
-#include "file_type.h"
+#include "fileSys/fat12_fs.h"
+#include "fileSys/file_type.h"
+#include "enum.h"
 
 #define MAX_FD_COUNT 1024
 #define MAX_MOUNT_COUNT 16
@@ -12,7 +13,7 @@
 struct FS_info {
     void* fileSystem;
     char disk_name[MAX_DISK_NAME];
-    enum FileSystemType fs_type;
+    fs_type type;
 };
 
 struct FileEntry {

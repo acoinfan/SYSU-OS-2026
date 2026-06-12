@@ -28,4 +28,6 @@ extern "C" void asm_update_cr3(int address);
 extern "C" void* asm_get_page_error_addr();
 extern "C" void asm_invlpg(void *addr);
 extern "C" void asm_save_process_context(uint32 dest);
+extern "C" void asm_ide_primary_interrupt();
+extern "C" void asm_ide_secondary_interrupt();
 #endif

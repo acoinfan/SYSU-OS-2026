@@ -94,6 +94,13 @@ extern "C" void c_time_interrupt_handler()
     }
 }
 
+extern "C" void c_ide_primary_interrupt() {
+    // kprintf("call c_ide_primary_interrupt\n");
+}
+
+extern "C" void c_ide_secondary_interrupt() {
+    // kprintf("call c_ide_secondary_interrupt\n");
+}
 
 InterruptManager::InterruptManager()
 {
@@ -115,7 +122,8 @@ void InterruptManager::initialize()
     }
 
     setInterruptDescriptor(14, (uint32)asm_page_fault_handler, 0);
-
+    setInterruptDescriptor(IRQ0_8259A_SLAVE + 6, (uint32)asm_ide_primary_interrupt, 0);
+    setInterruptDescriptor(IRQ0_8259A_SLAVE + 7, (uint32)asm_ide_secondary_interrupt, 0);
     // 初始化8259A芯片
     initialize8259A();
 }

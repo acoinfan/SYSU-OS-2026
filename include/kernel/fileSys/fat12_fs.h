@@ -11,9 +11,11 @@
 
 #include "os_type.h"
 #include "enum.h"
-#include "file_type.h"
+#include "fileSys/file_type.h"
 #include "thread.h"
-#include "inode_pool.h"
+#include "fileSys/fat12_inode_pool.h"
+#include "fileSys/fat12_entry.h"
+class FAT12_FS;
 
 struct fat12_cluster_buffer {
     uint16 cluster_num;
@@ -26,28 +28,13 @@ struct fat12_cluster_buffer {
     bool write_cluster(FAT12_FS* fs);  // flush cluster
 };
 
-struct __attribute__((packed)) fat12_entry {
-    char   name[8];
-    char   ext[3];
-    uint8  attr;
-    uint8  nt_reserved;
-    uint8  create_time_tenths;
-    uint16 create_time;
-    uint16 create_date;
-    uint16 last_access_date;
-    uint16 first_cluster_high;   // FAT12 常为 0
-    uint16 write_time;
-    uint16 write_date;
-    uint16 first_cluster_low;
-    uint32 file_size;   
-};
 
 struct fat12_directory {
     IdeDrive device;
     uint16 first_cluster;
     bool is_root;
     uint32 entry_count;
-    fat12_entry entries[FAT12_MAX_ENTRIES];
+    fat12_normalized_entry entries[FAT12_MAX_ENTRIES];
 };
 
 
@@ -71,11 +58,15 @@ struct __attribute__((packed)) fat12_BPB {
 class FAT12_FS {
 public:
     fat12_cluster_buffer cache_pool[FAT12_MAX_CACHE];
-    inode_pool<fat12_inode> inode_pool;
+    fat12_inode_pool inodepool;
+    fat12_entry_buf entry_buf;
+    fat12_normalized_entry* root_dir;
     uint8 tmp_sector_buffer[FAT12_SECTOR_SIZE * 3];
     fat12_BPB bpb;
     uint32 access_time;
     uint16 fat_table[FAT12_MAX_CLUSTERS];
+
+
     IdeDrive device;
 
     uint32 fat_start_sector;
@@ -83,6 +74,7 @@ public:
     uint32 data_start_sector;
 
     uint32 root_sector_count;
+    uint32 root_entries;
     uint32 cluster_count;
     uint32 cluster_size;
 public:
@@ -100,6 +92,10 @@ public:
     void flush();
     uint32 cluster2sector(uint16 cluster);
 private:
+    // root表管理
+    bool init_root_dir();
+    void destroy_root_dir();
+    void dump_root_dir();
     // cache 管理
 
     // 未找到则返回-1
@@ -129,8 +125,10 @@ private:
     bool flush_fat_table();
 
     // cluster管理
-    void read_dir(fat12_inode* dir, fat12_entry* entries, int max_entries);
+    void read_dir(fat12_inode* dir, void* entries, int max_entries);
     fat12_inode find_file(const char* const filename);
+
+    // 名称转换
 };
 
 

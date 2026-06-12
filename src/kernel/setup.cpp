@@ -104,7 +104,16 @@ void idle_thread(void* arg) {
     // kprintf("\nafter: \n");
     // kprintf(buf1);
     // end debug
-    programManager.executeProcess((const char *)init, 0, 1);
+
+    // debug: fat12_fs
+    FAT12_FS fs;
+    if (!fs.mount(IdeDrive::PrimarySlave)) {
+        kprintf("mount fail\n");
+    } else 
+        kprintf("mount done\n");
+
+    // end debug
+    // programManager.executeProcess((const char *)init, 0, 1);
     uint32 count = 0;
     // sleep
 

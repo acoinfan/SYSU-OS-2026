@@ -27,6 +27,23 @@ char *strcpy(char *dest, const char *src);
 
 int strcmp(const char *cs, const char *ct);
 
+inline bool is_alpha(char c) {
+    return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
+}
+
+inline char to_lower(char c) {
+    if (c >= 'A' && c <= 'Z') {
+        return c + ('a' - 'A'); 
+    }
+    return c; 
+}
+
+inline char to_upper(char c) {
+    if (c >= 'a' && c <= 'z') {
+        return c + ('A' - 'a'); 
+    }
+    return c; 
+}
 void *malloc(uint32 size);
 
 void free(void* ptr);
