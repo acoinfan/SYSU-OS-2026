@@ -236,7 +236,8 @@ int FAT12_FS::find_cache(uint16 cluster) {
 }
 
 fat12_cluster_buffer* FAT12_FS::get_cache(uint16 cluster) {
-    ASSERT(cluster != 0);
+    // 不允许读取非法簇
+    if (cluster < 2 || cluster >= 0xFF0) return nullptr;
     int idx = find_cache(cluster);
 
     // cache中找到
@@ -249,6 +250,14 @@ fat12_cluster_buffer* FAT12_FS::get_cache(uint16 cluster) {
     uint32 last_access_time = 0xFFFFFFFF;
     for (int i = 0; i < FAT12_MAX_CACHE; i++) {
         if (cache_pool[i].refcount == 0) {
+            cache_pool[i].cluster_num = cluster;
+            cache_pool[i].refcount = 1;
+            cache_pool[i].dirty = false;
+            cache_pool[i].last_used_time = this->access_time;
+
+            if (!cache_pool[i].read_cluster(this)) {
+                PANIC("FAT12_fs: read cluster %u failed\n", cluster);
+            }
             return &cache_pool[i];
         } 
         if (cache_pool[i].last_used_time < last_access_time) {
@@ -291,14 +300,79 @@ void FAT12_FS::free_cluster(uint16 idx) {
     fat_table[idx] = 0;
 }
 
-bool FAT12_FS::lookup(fat12_inode* dir, const char* name, fat12_inode* out) {
-    // 必须是属于该文件系统的dir
-    if (dir->fat12_fs != this) {
-        return false;
-    }
-
+fat12_inode* FAT12_FS::lookup(fat12_inode* dir, const char* name) {
     // 判断是否是根目录
+    fat12_inode* res = nullptr;
+    if (!dir) {
+        for (uint32 idx = 0; idx < root_entries; idx++) {
+            fat12_normalized_entry* entry = &root_dir[idx];
+            if (entry->name[0] == '\0') continue;   // 跳过空条目
+            if (entry->attr & 0x08) continue;       // 跳过卷标
+            else if (strcmp(name, entry->name) == 0) {
+                uint16 start_cluster = entry->start_cluster;
+                res = inodepool.get_inode(start_cluster);
+                if (res) {
+                    res->refcount++;
+                } else {
+                    res = inodepool.allocate();
+                    if (!res) {
+                        kprintf("inode Pool is Full\n");
+                        return nullptr;
+                    }
+                    res->attr = entry->attr;
+                    res->fat12_fs = this;
+                    res->parent_dir_start_cluster = 0;
+                    res->refcount = 1;
+                    res->size = entry->file_size;
+                    res->start_cluster = start_cluster;
+                }
+                return res;
+            }
+        }
+        return nullptr;
+    } else {
+        // 不是对应文件系统, 返回
+        if (dir->fat12_fs != this) {
+            return nullptr;
+        }
+        uint16 cnt_cluster = dir->start_cluster;
+        // 遍历有效簇
+        while (cnt_cluster >= 0x2 && cnt_cluster <= 0xFF7) {
+            fat12_cluster_buffer* cache = get_cache(cnt_cluster);
+            uint16 total_entries = cluster_size / FAT12_ENTRY_BYTES;
+            this->entry_buf.reset();
+            for (uint16 i = 0; i < total_entries; i++) {
+                if (entry_buf.read(cache->buf + i * FAT12_ENTRY_BYTES)) {
+                    if (strcmp(entry_buf.normalized_entry.name, name) == 0) {
+                        fat12_normalized_entry* entry = &entry_buf.normalized_entry;
+                        uint16 start_cluster = entry->start_cluster;
+                        res = inodepool.get_inode(start_cluster);
+                        if (res) {
+                            res->refcount++;
+                        } else {
+                            res = inodepool.allocate();
+                            if (!res) {
+                                kprintf("inode Pool is Full\n");
+                                return nullptr;
+                            }
+                            res->attr = entry->attr;
+                            res->fat12_fs = this;
+                            res->parent_dir_start_cluster = 0;
+                            res->refcount = 1;
+                            res->size = entry->file_size;
+                            res->start_cluster = start_cluster;
+                        }
+                        return res;
+                    }
+                } else if (entry_buf.status == fat12_entry_buf::fat12_entry_buf_status::END_OF_DIR){
+                    return nullptr;
+                }
 
+            }
+            cnt_cluster = fat_table[cnt_cluster];
+        }
+        return nullptr;
+    }
 }
 
 bool FAT12_FS::init_root_dir() {
@@ -368,4 +442,58 @@ void FAT12_FS::dump_root_dir() {
     }
 
     kprintf("====================================\n");
+}
+
+int FAT12_FS::read(fat12_inode* node, void* buf, int size, int offset) {
+    // 参数预检查
+    // node
+    if (!node || node->start_cluster < 2) 
+        return 0;
+
+    // offset:
+    if (offset >= node->size) return 0;     // EOF
+    else if (offset < 0)      return -1;    // Invalid Offest
+
+    // size:
+    if (size <= 0)            return 0;     // Not read
+    else if (size + offset > node->size) {
+        size = node->size - offset;         // file size limit
+    }
+    // 读取内容, 先找到对应位置
+    uint16 cnt_cluster = node->start_cluster;
+    while (offset >= cluster_size) {
+        if (cnt_cluster < 2 || cnt_cluster > 0xFF8) return 0;  // 超出簇链
+        cnt_cluster = fat_table[cnt_cluster];
+        offset -= cluster_size;
+    }
+
+    uint32 read_size = 0;
+    // 先读完该簇剩下内容
+    // size < 余下内容
+    fat12_cluster_buffer* cluster_buf = get_cache(cnt_cluster);
+    if (!cluster_buf) return -1;
+    uint32 left = cluster_size - offset;
+    if (size < left) {
+        memcpy(buf, &cluster_buf->buf[offset], size);
+        read_size += size;
+        return read_size;
+    } else {
+        memcpy(buf, &cluster_buf->buf[offset], left);
+        size -= left;
+        read_size += left;
+    }
+
+    cnt_cluster = fat_table[cnt_cluster];
+
+    // 连cluster读
+    while (size > 0 && cnt_cluster >= 2 && cnt_cluster < 0xFF8) {
+        cluster_buf = get_cache(cnt_cluster);
+        if (!cluster_buf) return read_size;
+        uint16 chunk = min(size, cluster_size);
+        memcpy((char*)buf + read_size, cluster_buf->buf, chunk);
+        size -= chunk;
+        read_size += chunk;
+        cnt_cluster = fat_table[cnt_cluster];
+    }
+    return read_size;
 }

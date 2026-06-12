@@ -1,5 +1,6 @@
 #include "fileSys/fat12_entry.h"
 #include "stdlib.h"
+#include "screen.h"
 
 bool fat12_entry_buf::read(void* fat12_entry) {
     uint8 attr = *(uint8*) (fat12_entry + 11);
@@ -117,4 +118,13 @@ void fat12_entry_buf::reset() {
     status = FREE;
     tail = 0;
     checksum = 0;
+}
+
+void fat12_inode::dump() {
+    kprintf("size = %d\n"
+        "start_cluster = %d\n"
+        "parent_dir_start_cluster = %d\n"
+        "attr = %x\n"
+        "refCount = %d\n",
+        size, start_cluster, parent_dir_start_cluster, attr, refcount);
 }

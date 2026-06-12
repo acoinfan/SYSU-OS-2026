@@ -42,3 +42,12 @@ fat12_inode* fat12_inode_pool::allocate() {
 void fat12_inode_pool::release(uint32 idx) {
     bitmap.release((int)idx, 1);
 }
+
+fat12_inode* fat12_inode_pool::get_inode(uint32 start_cluster) {
+    for (uint32 i = 0; i < this->node_count; i++) {
+        if (inodes[i].start_cluster == start_cluster) {
+            return &inodes[i];
+        }
+    }
+    return nullptr;
+}

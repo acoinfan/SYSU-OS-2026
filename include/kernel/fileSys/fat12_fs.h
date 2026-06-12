@@ -81,7 +81,8 @@ public:
     bool mount(IdeDrive disk);
     bool umount();
 
-    bool lookup(fat12_inode* dir, const char* name, fat12_inode* out);
+    // name必须为小写, 若为根目录下查询, dir需要初始化start_cluster = 0
+    fat12_inode* lookup(fat12_inode* dir, const char* name);
     bool create_file(fat12_inode* dir, const char* name, int flags, fat12_inode* out);
     bool create_directory(fat12_inode* dir, const char* name);
     bool remove(fat12_inode* dir, const char* name);
@@ -96,6 +97,7 @@ private:
     bool init_root_dir();
     void destroy_root_dir();
     void dump_root_dir();
+private:
     // cache 管理
 
     // 未找到则返回-1
@@ -106,8 +108,10 @@ private:
 
     // cache_pool 管理
     bool init_cache_pool();
+    // TODO: destroy的时候没有做flush
     void destroy_cache_pool();
 
+private:
     // fat表管理
 
     // 找空闲cluster

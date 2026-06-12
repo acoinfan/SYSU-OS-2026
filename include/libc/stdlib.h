@@ -3,6 +3,9 @@
 
 #include "os_type.h"
 
+#define min(a, b) ((a) < (b) ? (a) : (b))
+#define max(a, b) ((a) > (b) ? (a) : (b))
+
 template<typename T>
 void swap(T &x, T &y);
 

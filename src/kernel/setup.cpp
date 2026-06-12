@@ -105,13 +105,34 @@ void idle_thread(void* arg) {
     // kprintf(buf1);
     // end debug
 
-    // debug: fat12_fs
+    // debug: fat12_fs read test
     FAT12_FS fs;
     if (!fs.mount(IdeDrive::PrimarySlave)) {
         kprintf("mount fail\n");
     } else 
         kprintf("mount done\n");
 
+    
+    char test[100];
+    memset(test, 0, 100);
+    fat12_inode* inode = fs.lookup(nullptr, "test2.txt");
+    inode->dump();
+    int res = fs.read(inode, test, 99, 0);
+    kprintf("read %d bytes\n", res);
+    kprintf("str = %s, size = %d\n", test, strlen(test));
+
+    memset(test, 0, 100);
+    inode = fs.lookup(nullptr, "dir1");
+    inode->dump();
+    fat12_inode* inode2 = fs.lookup(inode, "testf");
+    if (!inode2) {
+        kprintf("fail to find\n");
+    } else {
+        inode->dump();
+        res = fs.read(inode2, test, 99, 0);
+        kprintf("read %d bytes\n", res);
+        kprintf("str = %s, size = %d\n", test, strlen(test));    
+    }
     // end debug
     // programManager.executeProcess((const char *)init, 0, 1);
     uint32 count = 0;

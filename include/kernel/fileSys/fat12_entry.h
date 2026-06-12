@@ -28,6 +28,8 @@ struct fat12_inode {
 
     uint8 attr;
     uint32 refcount;
+
+    void dump();
 };
 
 struct __attribute__((packed)) fat12_sfn_entry {

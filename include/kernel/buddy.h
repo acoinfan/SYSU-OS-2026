@@ -11,8 +11,6 @@
     (MAP[(idx) / 8] = (MAP[(idx) / 8] & ~(1 << ((idx) % 8))) | ((state) << ((idx) % 8)))
 
 #define pow2(exp) (1 << (exp))
-#define min(a, b) ((a) < (b) ? (a) : (b))
-#define max(a, b) ((a) > (b) ? (a) : (b))
 #define count2order(count) (log2((count) - 1) + 1)
 
 #include "screen.h"

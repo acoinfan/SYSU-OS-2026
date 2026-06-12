@@ -47,6 +47,7 @@ clean:
 	$(MAKE) -C ../src/builtin clean
 	$(MAKE) -C ../src/boot clean
 	$(MAKE) -C ../src/kernel clean
+	rm -f $(RUNDIR)/test.img
 
 run:
 	qemu-system-i386 -hda $(RUNDIR)/hd.img -hdb $(RUNDIR)/test.img -display curses
