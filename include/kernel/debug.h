@@ -36,6 +36,12 @@ void assert_fail(
     const char *func
 );
 
+void debug_log_clear();
+void debug_log_append(char c);
+const char* debug_log_data();
+uint32 debug_log_size();
+int test_log_printf(const char* fmt, ...);
+
 #define ASSERT(expr)                                      \
 do {                                                      \
     if(!(expr))                                           \

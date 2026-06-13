@@ -32,6 +32,7 @@ global asm_get_page_error_addr
 global asm_invlpg
 global asm_ide_primary_interrupt
 global asm_ide_secondary_interrupt
+global asm_delay
 
 extern c_page_fault_handler
 
@@ -537,3 +538,16 @@ asm_ide_secondary_interrupt:
     pop ds
     add esp, 0            ; 占位，如需 error code 可在此修改
     iretd
+
+; void asm_delay(uint32 count);
+asm_delay:
+    push ebp
+    mov ebp, esp
+
+    mov ecx, [ebp + 8]
+.delay_loop:
+    nop
+    loop .delay_loop
+
+    pop ebp
+    ret

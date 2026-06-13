@@ -154,5 +154,6 @@ enum class IdeDrive : uint8 {
     PrimarySlave    = 1,    // hdb
     SecondaryMaster = 2,    // hdc
     SecondarySlave  = 3,    // hdd
+    INVALID         = 0xFF  // INVALID
 };
 #endif

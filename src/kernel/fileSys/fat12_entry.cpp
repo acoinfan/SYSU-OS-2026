@@ -2,6 +2,7 @@
 #include "stdlib.h"
 #include "screen.h"
 #include "fileSys/fat12_fs.h"
+#include "debug.h"
 
 bool fat12_entry_buf::read(void* fat12_entry) {
     uint8 attr = *(uint8*) (fat12_entry + 11);
@@ -122,7 +123,7 @@ void fat12_entry_buf::reset() {
 }
 
 void fat12_inode::dump() {
-    kprintf("size = %d\n"
+    test_log_printf("size = %d\n"
         "start_cluster = %d\n"
         "parent_dir_start_cluster = %d\n"
         "attr = %x\n"
@@ -233,4 +234,13 @@ void fat12_normalized_entry::copy(const fat12_normalized_entry& other) {
     this->start_cluster = other.start_cluster;
     this->write_date = other.write_date;
     this->write_time = other.write_time;
+}
+
+bool fat12_entry_location::is_same(const fat12_entry_location& other) const {
+    if (this->is_root) {
+        return other.is_root && this->root_index == other.root_index;
+    } else {
+        return (!other.is_root) && (this->current_cluster == other.current_cluster)
+                && (this->entry_index_in_cluster == other.entry_index_in_cluster);
+    }
 }

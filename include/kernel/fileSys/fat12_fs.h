@@ -77,6 +77,7 @@ public:
 
     uint32 root_sector_count;
     uint32 root_entries;
+    uint32 root_pages;
     uint32 cluster_count;
     uint32 cluster_size;
 public:
@@ -111,8 +112,8 @@ public:
 private:
     // root表管理
     bool init_root_dir();
-    void destroy_root_dir();
-    void flush_root_dir();
+    bool destroy_root_dir();
+    bool flush_root_dir();
 private:
     // cache 管理
 
@@ -125,10 +126,12 @@ private:
     // flush cluster:
     bool flush_cache(uint16 cluster);
 
+    // flush all cache
+    bool flush_all_cache();
     // cache_pool 管理
     bool init_cache_pool();
     // TODO: destroy的时候没有做flush
-    void destroy_cache_pool();
+    bool destroy_cache_pool();
 private:
     // 非法target和找不到返回false, 找到返回true
     bool find_dir_entry(fat12_inode* target, fat12_entry_location* location);
@@ -149,19 +152,10 @@ private:
     // 释放cluster
     void free_cluster(uint16 idx);
 
-    // 一些flush函数
-    void flush_buffer(uint16 idx);
-    void flush_all();
 private:
     // fat管理
     bool read_fat_table();
     bool flush_fat_table();
-
-    // cluster管理
-    void read_dir(fat12_inode* dir, void* entries, int max_entries);
-    fat12_inode find_file(const char* const filename);
-
-    // 名称转换
 };
 
 

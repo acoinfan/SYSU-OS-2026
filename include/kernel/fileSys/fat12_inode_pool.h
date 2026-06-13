@@ -40,5 +40,6 @@ public:
 
     // TODO
     fat12_inode* get_inode(uint32 start_cluster);
+    fat12_inode* get_inode(const fat12_entry_location& location);
 };
 #endif

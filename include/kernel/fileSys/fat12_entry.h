@@ -20,9 +20,11 @@ enum fat12_attr : uint8 {
 struct fat12_entry_location {
     bool is_root;                  // 是否根目录
     uint16 parent_cluster;         // 父目录起始簇；root 时为 0
-    uint16 current_cluster;        // 当前条目所在簇；root 时可为 0
-    uint16 entry_index_in_cluster; // 簇内第几个 32B 条目
+    uint16 current_cluster;        // 当前条目所在簇；root 时可为 0 (key1)
+    uint16 entry_index_in_cluster; // 簇内第几个 32B 条目          (key2)
     uint32 root_index;             // root 目录数组下标，仅 root 有意义
+
+    bool is_same(const fat12_entry_location& other) const;
 };
 
 // 采用(fat12_fs, start_cluster)唯一标识
@@ -37,6 +39,7 @@ struct fat12_inode {
     uint8 attr;
     uint32 refcount;
 
+    fat12_entry_location location;
     void dump();
 };
 

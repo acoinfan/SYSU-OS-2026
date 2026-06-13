@@ -19,6 +19,8 @@ bool fat12_inode_pool::initialize(uint32 total_inode) {
         return false;
     }
 
+    memset(inodes, 0, inodes_total_bytes + bitmap_total_bytes);
+
     bitmap.initialize(((char*)inodes + inodes_total_bytes), node_count);
     return true;
 }
@@ -46,10 +48,19 @@ void fat12_inode_pool::release(fat12_inode* ptr) {
 }
 
 fat12_inode* fat12_inode_pool::get_inode(uint32 start_cluster) {
+    if (start_cluster == 0) return nullptr;
     for (uint32 i = 0; i < this->node_count; i++) {
-        if (inodes[i].start_cluster == start_cluster) {
+        if (bitmap.get(i) && inodes[i].start_cluster == start_cluster) {
             return &inodes[i];
         }
+    }
+    return nullptr;
+}
+
+fat12_inode* fat12_inode_pool::get_inode(const fat12_entry_location& location) {
+    for (uint32 i = 0; i < this->node_count; i++) {
+        if (bitmap.get(i) && inodes[i].start_cluster == 0 && inodes[i].location.is_same(location))
+            return &inodes[i];
     }
     return nullptr;
 }

@@ -19,7 +19,7 @@ set pagination off
 # c
 # b ProgramManager::fork
 # b ProgramManager::executeProcess
-b dump_root_dir
-b fat12_fs.cpp:366
+b setup.cpp:225
+b append
 c
 layout src

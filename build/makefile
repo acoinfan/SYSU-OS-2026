@@ -1,5 +1,5 @@
 include config.mk
-.PHONY: all build kernel user clean run debug gdb test libs
+.PHONY: all build kernel user clean run debug gdb test libs export export-log
 
 all: build
 
@@ -51,6 +51,15 @@ clean:
 
 run:
 	qemu-system-i386 -hda $(RUNDIR)/hd.img -hdb $(RUNDIR)/test.img -display curses
+
+export:
+	@mkdir -p $(RUNDIR)/export
+	@rm -rf $(RUNDIR)/export/*
+	mcopy -i $(RUNDIR)/test.img -s "::/*" $(RUNDIR)/export/
+
+export-log:
+	@mkdir -p $(RUNDIR)/export
+	mcopy -i $(RUNDIR)/test.img ::/fat12.log $(RUNDIR)/export/fat12.log
 
 debug:
 	qemu-system-i386 -S -s -hda $(RUNDIR)/hd.img -hdb $(RUNDIR)/test.img

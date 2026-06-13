@@ -5,6 +5,8 @@
 #include "os_modules.h"
 
 bool fat12_cluster_buffer::read_cluster(FAT12_FS* fs) {
+    last_used_time = fs->access_time;
+    fs->access_time++;
     uint32 sector = fs->cluster2sector(cluster_num);
     for (int i = 0; i < fs->bpb.sectors_per_cluster; i++) {
         if (!ide_read_sector(fs->device, sector + i, buf + i * fs->bpb.bytes_per_sector)) {
@@ -12,12 +14,12 @@ bool fat12_cluster_buffer::read_cluster(FAT12_FS* fs) {
         }
     }
     dirty = false;
-    last_used_time = fs->access_time;
-    fs->access_time++;
     return true;
 }
 
 bool fat12_cluster_buffer::write_cluster(FAT12_FS* fs) {
+    last_used_time = fs->access_time;
+    fs->access_time++;
     if (!dirty) return true;
 
     uint32 sector = fs->cluster2sector(cluster_num);
@@ -27,8 +29,6 @@ bool fat12_cluster_buffer::write_cluster(FAT12_FS* fs) {
         }
     }
     dirty = false;
-    last_used_time = fs->access_time;
-    fs->access_time++;
     return true;
 }
 
@@ -109,8 +109,18 @@ bool FAT12_FS::mount(IdeDrive disk) {
     init_root_dir();
     
     // debug: 打印root_dir信息
-    dump_root_dir();
+    // dump_root_dir();
     return true;
+}
+
+bool FAT12_FS::umount() {
+    bool res = true;
+    res &= destroy_root_dir();
+    inodepool.destroy();
+    res &= destroy_cache_pool();
+    res &= flush_fat_table();
+    device = IdeDrive::INVALID; 
+    return res;
 }
 
 bool FAT12_FS::init_cache_pool() {
@@ -129,9 +139,10 @@ bool FAT12_FS::init_cache_pool() {
     return true;
 }
 
-void FAT12_FS::destroy_cache_pool() {
+bool FAT12_FS::destroy_cache_pool() {
     ASSERT(this->cluster_size != 0);
     uint32 page_count = (this->cluster_size + PAGE_SIZE - 1) / PAGE_SIZE;
+    bool res = flush_all_cache();
     // 由于是连续分配, 失败直接返回即可
     for (uint16 i = 0; i < FAT12_MAX_CACHE; i++) {
         if (cache_pool[i].buf != 0) {
@@ -140,6 +151,7 @@ void FAT12_FS::destroy_cache_pool() {
             break;
         }
     }
+    return res;
 }
 
 bool FAT12_FS::read_fat_table() {
@@ -314,7 +326,18 @@ fat12_inode* FAT12_FS::lookup(fat12_inode* dir, const char* name) {
             if (entry->attr & 0x08) continue;       // 跳过卷标
             else if (strcmp(name, entry->name) == 0) {
                 uint16 start_cluster = entry->start_cluster;
-                res = inodepool.get_inode(start_cluster);
+                if (start_cluster == 0) {
+                    fat12_entry_location location;
+                    location.current_cluster = 0;
+                    location.is_root = true;
+                    location.entry_index_in_cluster = 0;
+                    location.parent_cluster = 0;
+                    location.root_index = idx;
+                    res = inodepool.get_inode(location);
+                } else {
+                    res = inodepool.get_inode(start_cluster);
+                }
+
                 if (res) {
                     res->refcount++;
                 } else {
@@ -330,6 +353,12 @@ fat12_inode* FAT12_FS::lookup(fat12_inode* dir, const char* name) {
                     res->size = entry->file_size;
                     res->start_cluster = start_cluster;
                 }
+                // 维护新location:
+                res->location.current_cluster = 0;
+                res->location.entry_index_in_cluster = 0;
+                res->location.is_root = true;
+                res->location.parent_cluster = 0;
+                res->location.root_index = idx;
                 return res;
             }
         }
@@ -350,7 +379,18 @@ fat12_inode* FAT12_FS::lookup(fat12_inode* dir, const char* name) {
                     if (strcmp(entry_buf.normalized_entry.name, name) == 0) {
                         fat12_normalized_entry* entry = &entry_buf.normalized_entry;
                         uint16 start_cluster = entry->start_cluster;
-                        res = inodepool.get_inode(start_cluster);
+                        if (start_cluster == 0) {
+                            fat12_entry_location location;
+                            location.current_cluster = cnt_cluster;
+                            location.is_root = false;
+                            location.entry_index_in_cluster = i;
+                            location.parent_cluster = 0;
+                            location.root_index = 0;
+                            res = inodepool.get_inode(location);
+                        } else {
+                            res = inodepool.get_inode(start_cluster);
+                        }
+
                         if (res) {
                             res->refcount++;
                         } else {
@@ -361,11 +401,17 @@ fat12_inode* FAT12_FS::lookup(fat12_inode* dir, const char* name) {
                             }
                             res->attr = entry->attr;
                             res->fat12_fs = this;
-                            res->parent_dir_start_cluster = 0;
+                            res->parent_dir_start_cluster = dir->start_cluster;
                             res->refcount = 1;
                             res->size = entry->file_size;
                             res->start_cluster = start_cluster;
                         }
+                        // 维护location
+                        res->location.current_cluster = cnt_cluster;
+                        res->location.entry_index_in_cluster = i;
+                        res->location.is_root = false;
+                        res->location.parent_cluster = dir->start_cluster;
+                        res->location.root_index = 0;
                         return res;
                     }
                 } else if (entry_buf.status == fat12_entry_buf::fat12_entry_buf_status::END_OF_DIR){
@@ -383,8 +429,8 @@ bool FAT12_FS::init_root_dir() {
     fat12_entry_buf entry_buf;
     // 初始化root_table
     uint32 root_bytes = this->root_entries * sizeof(fat12_normalized_entry);
-    uint32 root_pages = (root_bytes + PAGE_SIZE - 1) / PAGE_SIZE;
-    this->root_dir = (fat12_normalized_entry*)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, root_pages, VP_RW);
+    this->root_pages = (root_bytes + PAGE_SIZE - 1) / PAGE_SIZE;
+    this->root_dir = (fat12_normalized_entry*)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, this->root_pages, VP_RW);
     if (!this->root_dir) {
         // TODO 记得释放
         return false;
@@ -410,11 +456,50 @@ bool FAT12_FS::init_root_dir() {
                 }
             } else if (entry_buf.status == fat12_entry_buf::fat12_entry_buf_status::END_OF_DIR) {
                 finish = true;
+                break;
             }
         }
     }
     this->root_dir_dirty = false;
     return true;
+}
+
+bool FAT12_FS::flush_root_dir() {
+    fat12_entry_buf entry_buf;
+    uint32 end_sector = this->root_sector_count + this->root_start_sector;
+    uint32 entry_idx = 0;
+    uint32 entry_per_sector = bpb.bytes_per_sector / FAT12_ENTRY_BYTES;
+    bool res = true;
+    for (uint32 sector_idx = this->root_start_sector; sector_idx < end_sector; sector_idx++) {
+        memset(tmp_sector_buffer, 0, bpb.bytes_per_sector);
+        entry_buf.reset();
+        for (uint32 i = 0; i < entry_per_sector; i++) {
+            // 作为SFN写回
+            if (entry_idx < root_entries) {
+                entry_buf.normalized_entry.copy(root_dir[entry_idx]);
+                // 是否已删除条目
+                if ((uint8)root_dir[entry_idx].name[0] == 0xE5) {
+                    res &= entry_buf.write(tmp_sector_buffer + FAT12_ENTRY_BYTES * i, true);
+                } else {
+                    res &= entry_buf.write(tmp_sector_buffer + FAT12_ENTRY_BYTES * i, false);
+                }
+                entry_idx++;
+            } else {
+                // 超出部分不写
+                continue;
+            }
+        }
+        // 落盘
+        res &= ide_write_sector(device, sector_idx, tmp_sector_buffer);
+    }
+    this->root_dir_dirty = false;
+    return res;
+}
+
+bool FAT12_FS::destroy_root_dir() {
+    bool res = flush_root_dir();
+    memoryManager.releasePages(AddressPoolType::KERNEL, (int)this->root_dir, this->root_pages);
+    return res;
 }
 
 void FAT12_FS::dump_root_dir() {
@@ -574,6 +659,132 @@ int FAT12_FS::write(fat12_inode* node, const void* buf, int size, int offset) {
     return write_size;
 }
 
+int FAT12_FS::append(fat12_inode* node, const void* buf, int size) {
+    // 参数检查
+    if (!node || node->fat12_fs != this) return -1;
+    if ((node->attr & fat12_attr::DIRECTORY) || (node->attr & fat12_attr::VOLUME_ID)) return -1;
+    if (size <= 0) return 0;
+
+    const char* src = (const char*)buf;
+    int appended = 0;
+
+    // 如果是空文件，先分配首簇
+    if (node->start_cluster == 0) {
+        uint16 first_cluster = allocate_cluster();
+        if (first_cluster == 0) return -1;
+
+        fat_table[first_cluster] = 0xFFF;
+        fat_table_dirty = true;
+
+        // 立即 flush FAT
+        if (!flush_fat_table()) {
+            free_cluster(first_cluster);
+            return -1;
+        }
+
+        node->start_cluster = first_cluster;
+    }
+
+    // 找到最后一个簇
+    uint16 cluster = node->start_cluster;
+    while (fat_table[cluster] >= 2 && fat_table[cluster] < 0xFF8) {
+        cluster = fat_table[cluster];
+    }
+
+    // 先写最后一个簇里剩余的空间
+    int used = node->size % cluster_size;
+    if (node->size == 0) used = 0;
+
+    if (used < (int)cluster_size) {
+        fat12_cluster_buffer* cache = get_cache(cluster);
+
+        int chunk = min(size, (int)cluster_size - used);
+        memcpy(cache->buf + used, src, chunk);
+        cache->dirty = true;
+
+        if (!cache->write_cluster(this)) {
+            // 跳过后续的写, 直接进入file_size更新
+            size = 0;
+        }
+
+        appended += chunk;
+        src += chunk;
+        size -= chunk;
+    }
+
+    // 后续不足的部分继续分配新簇写入
+    while (size > 0) {
+        uint16 new_cluster = allocate_cluster();
+        if (new_cluster == 0) {
+            break; // 直接进入file_size更新
+        }
+
+        // 链接fat
+        fat_table[cluster] = new_cluster;
+        fat_table[new_cluster] = 0xFFF;
+        fat_table_dirty = true;
+
+        // flush fat
+        if (!flush_fat_table()) {
+            free_cluster(new_cluster);
+            fat_table[cluster] = 0xFFF;
+            break;
+        }
+
+        // 写入
+        fat12_cluster_buffer* cache = get_cache(new_cluster);
+
+        // 新簇先清零，避免未写满部分是脏数据
+        memset(cache->buf, 0, cluster_size);
+
+        int chunk = min(size, (int)cluster_size);
+        memcpy(cache->buf, src, chunk);
+        cache->dirty = true;
+
+        // 立刻写回这个新簇, 若失败则直接进入file_size更新
+        if (!cache->write_cluster(this)) {
+            appended += chunk;
+            break;
+        }
+
+        appended += chunk;
+        src += chunk;
+        size -= chunk;
+        cluster = new_cluster;
+    }
+
+    // 更新文件大小
+    if (appended > 0) {
+        node->size += appended;
+        // 回写目录项中的 file_size / start_cluster
+        // 注意：inode 里没有 name，所以这里要先根据 inode 找到目录项位置
+        fat12_normalized_entry* entry;
+        if (node->location.is_root) {
+            entry = &root_dir[node->location.root_index];
+            entry->start_cluster = node->start_cluster;
+            entry->file_size = node->size;
+            root_dir_dirty = true;
+        } else {
+            fat12_cluster_buffer* parent_cache = get_cache(node->location.current_cluster);
+            fat12_entry_buf entry_buf;
+            entry_buf.reset();
+            if (entry_buf.read(parent_cache->buf + node->location.entry_index_in_cluster * FAT12_ENTRY_BYTES)) {
+                entry_buf.normalized_entry.start_cluster = node->start_cluster;
+                entry_buf.normalized_entry.file_size = node->size;
+                if (!entry_buf.write(parent_cache->buf + node->location.entry_index_in_cluster * FAT12_ENTRY_BYTES, false)) {
+                    PANIC("Fail to update file size in FAT12_FS::append");                        
+                }
+                parent_cache->dirty = true;
+            } else {
+                PANIC("Fail to update file size in FAT12_FS::append");
+            }
+        }
+    }
+
+    return appended;
+}
+
+// 未被使用 DELETE: 问题是 
 bool FAT12_FS::find_dir_entry(fat12_inode* target, fat12_entry_location* location) {
     // 不是对应文件系统, 返回
     if (!target || target->fat12_fs != this) {
@@ -595,7 +806,7 @@ bool FAT12_FS::find_dir_entry(fat12_inode* target, fat12_entry_location* locatio
                 location->parent_cluster = 0;
                 location->root_index = idx;
                 return true;
-            }
+            } 
         }
         return false;
     } else {
@@ -785,21 +996,17 @@ bool FAT12_FS::create_file(fat12_inode* dir, const char* name, uint8 attr) {
 bool FAT12_FS::remove(fat12_inode* dir, const char* name) {
     fat12_inode* file = lookup(dir, name);
     if (!file) return false;                    // 不存在该文件
-    else if (file->refcount != 1){
+    else if (file->refcount != 1) {
         // 还有更多地方已占用该文件
         release_inode(file);
         return false;
     }
-        
+    
+    // debug:
+    test_log_printf("call from remove:\n");
+    file->dump();
 
-    fat12_entry_location location;
-    if (!find_dir_entry(file, &location)) {
-        // 无效的file
-        release_inode(file);
-        return false;
-    }
-
-    if (!delete_dir_entry(location)) {
+    if (!delete_dir_entry(file->location)) {
         // 清理失败
         release_inode(file);
         return false;
@@ -919,14 +1126,7 @@ bool FAT12_FS::remove_directory(fat12_inode* dir, const char* name) {
     }
         
 
-    fat12_entry_location location;
-    if (!find_dir_entry(target, &location)) {
-        // 无效的文件夹
-        release_inode(target);
-        return false;
-    }
-
-    if (!delete_dir_entry(location)) {
+    if (!delete_dir_entry(target->location)) {
         // 清理失败
         release_inode(target);
         return false;
@@ -962,4 +1162,20 @@ int FAT12_FS::is_dir_empty(fat12_inode* dir) {
     if (!iter.init(this, dir)) return -1;
 
     return iter.next() ? 0 : 1;
+}
+
+// flush cluster:
+bool FAT12_FS::flush_cache(uint16 cluster) {
+    int idx = find_cache(cluster);
+    if (idx == -1) return true;
+    return cache_pool[idx].write_cluster(this);
+}
+
+// flush all cache
+bool FAT12_FS::flush_all_cache() {
+    bool res = true;
+    for (uint32 i = 0; i < FAT12_MAX_CACHE; i++) {
+        res &= cache_pool[i].write_cluster(this);
+    }
+    return res;
 }
