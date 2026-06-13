@@ -14,9 +14,17 @@ public:
 
     void destroy();
 
+    // ref通过lookup和外部的close函数维护
+    // 其中lookup结果的ref++
+    // 调用close时ref--
+    // lookup的中途结果交给manager维护
     fat12_inode* allocate();
-
-    void release(uint32 idx);
+    
+    // ref通过lookup和外部的close函数维护
+    // 其中lookup结果的ref++
+    // 调用close时ref--
+    // lookup的中途结果交给manager维护
+    void release(fat12_inode* ptr);
     // 传入nullptr则视作根目录(0)
     // TODO 更好的文件名处理
     fat12_inode* get_inode(fat12_inode* dir, const char* name);

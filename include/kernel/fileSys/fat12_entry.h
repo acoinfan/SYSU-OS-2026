@@ -17,6 +17,14 @@ enum fat12_attr : uint8 {
     ARCHIVE=0x20
 };
 
+struct fat12_entry_location {
+    bool is_root;                  // 是否根目录
+    uint16 parent_cluster;         // 父目录起始簇；root 时为 0
+    uint16 current_cluster;        // 当前条目所在簇；root 时可为 0
+    uint16 entry_index_in_cluster; // 簇内第几个 32B 条目
+    uint32 root_index;             // root 目录数组下标，仅 root 有意义
+};
+
 // 采用(fat12_fs, start_cluster)唯一标识
 // 若是根目录, 则parent_dir_start_cluster = 0, start_cluster = 0;
 struct fat12_inode {
@@ -70,6 +78,9 @@ struct fat12_normalized_entry {
     uint16 write_time;
     uint16 write_date;
     uint32 file_size;    
+
+    void dump() const;
+    void copy(const fat12_normalized_entry& other);
 };
 
 struct fat12_entry_buf {
@@ -95,6 +106,30 @@ struct fat12_entry_buf {
     bool write(void* fat12_entry, bool setDelete);
 };
 
+
+class fat12_dir_iter {
+public:
+    FAT12_FS* fs;
+    fat12_inode* dir;
+
+    fat12_entry_buf current;        // 当前iter到的结果
+
+    
+    uint32 global_idx;              // 总共遍历过多少个条目(包括已删除, 无效的...)
+    // 用于一般目录
+    uint16 current_cluster;         // 正在遍历的簇号
+    uint16 entry_index_in_cluster;  // 当前簇内的条目下标
+    
+    // 用于根目录
+    uint32 root_index;              // 根目录遍历指针
+
+    // 控制参数
+    uint32 count;                   // 已输出有效条目数
+public:
+    bool init(FAT12_FS* fs, fat12_inode* dir);
+    bool next();
+    const fat12_normalized_entry& get() const;
+};
 // 辅助函数
 // uint8 lfn_checksum(const uint8* sfn) {
 //     // sfn: 11 字节，8+3 格式

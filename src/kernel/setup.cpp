@@ -113,31 +113,89 @@ void idle_thread(void* arg) {
         kprintf("mount done\n");
 
     
-    char test[100];
-    memset(test, 0, 100);
-    fat12_inode* inode = fs.lookup(nullptr, "test2.txt");
-    inode->dump();
-    int res = fs.read(inode, test, 99, 0);
-    kprintf("read %d bytes\n", res);
-    kprintf("str = %s, size = %d\n", test, strlen(test));
+    // char test[100];
+    // memset(test, 0, 100);
+    // fat12_inode* inode = fs.lookup(nullptr, "test2.txt");
+    // inode->dump();
+    // int res = fs.read(inode, test, 99, 0);
+    // kprintf("read %d bytes\n", res);
+    // kprintf("str = %s, size = %d\n", test, strlen(test));
 
-    memset(test, 0, 100);
-    inode = fs.lookup(nullptr, "dir1");
-    inode->dump();
-    fat12_inode* inode2 = fs.lookup(inode, "testf");
-    if (!inode2) {
-        kprintf("fail to find\n");
-    } else {
-        inode->dump();
-        res = fs.read(inode2, test, 99, 0);
-        kprintf("read %d bytes\n", res);
-        kprintf("str = %s, size = %d\n", test, strlen(test));    
+    // memset(test, 0, 100);
+    // inode = fs.lookup(nullptr, "dir1");
+    // inode->dump();
+    // fat12_inode* inode2 = fs.lookup(inode, "testf");
+    // if (!inode2) {
+    //     kprintf("fail to find\n");
+    // } else {
+    //     inode->dump();
+    //     res = fs.read(inode2, test, 99, 0);
+    //     kprintf("read %d bytes\n", res);
+    //     kprintf("str = %s, size = %d\n", test, strlen(test));    
+    // }
+    // end debug
+
+
+    // debug: fat12_dir_iter
+    // fat12_inode* root = nullptr;
+    // fat12_dir_iter iter;
+    // if (iter.init(&fs, root)) {
+    //     while (iter.next()) {
+    //         fat12_normalized_entry entry = iter.get();
+    //         entry.dump();
+    //     }
+    // }
+
+    // end debug
+
+    // debug: fat12 create/remove file
+
+    // fat12_inode* dir = nullptr;
+    // fs.create_file(dir, "hello.txt", fat12_attr::ARCHIVE);
+    // fs.dump_root_dir();
+    
+    // if (!fs.create_file(dir, "hello.txt", fat12_attr::ARCHIVE)) {
+    //     kprintf("file exists\n");
+    // }
+
+    // fat12_inode* file = fs.lookup(dir, "hello.txt");
+    // if (!fs.remove(dir, "hello.txt")) {
+    //     kprintf("file is in use\n");
+    // }
+    // fs.release_inode(file);
+    // fs.remove(dir, "hello.txt");
+    // fs.dump_root_dir();
+
+    // end debug
+
+
+    // debug: fat12 create-remove directory
+
+    fat12_inode* target_dir = nullptr;
+    fs.create_directory(target_dir, "firstdir");
+    fs.dump_root_dir();
+
+    if (!fs.create_directory(target_dir, "firstdir")) {
+        kprintf("dir exists\n");
     }
+
+    fat12_inode* to_remove = fs.lookup(target_dir, "firstdir");
+    if (!fs.remove_directory(target_dir, "firstdir")) {
+        kprintf("dir is in use\n");
+    }
+    if (!fs.remove_directory(target_dir, "dir1")) {
+        kprintf("dir1 has some files\n");
+    }
+    fs.release_inode(to_remove);
+    fs.remove_directory(target_dir, "firstdir");
+    fs.dump_root_dir();
+
     // end debug
     // programManager.executeProcess((const char *)init, 0, 1);
     uint32 count = 0;
     // sleep
 
+    kprintf("idling\n");
     while (1) {
         count++;
         if (count == 100000000) {

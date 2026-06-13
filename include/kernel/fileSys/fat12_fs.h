@@ -56,16 +56,18 @@ struct __attribute__((packed)) fat12_BPB {
 };
 
 class FAT12_FS {
+    friend fat12_dir_iter;
 public:
     fat12_cluster_buffer cache_pool[FAT12_MAX_CACHE];
     fat12_inode_pool inodepool;
-    fat12_entry_buf entry_buf;
+
     fat12_normalized_entry* root_dir;
+    bool root_dir_dirty;
     uint8 tmp_sector_buffer[FAT12_SECTOR_SIZE * 3];
     fat12_BPB bpb;
     uint32 access_time;
     uint16 fat_table[FAT12_MAX_CLUSTERS];
-
+    bool fat_table_dirty;
 
     IdeDrive device;
 
@@ -83,20 +85,34 @@ public:
 
     // name必须为小写, 若为根目录下查询, dir需要初始化start_cluster = 0
     fat12_inode* lookup(fat12_inode* dir, const char* name);
-    bool create_file(fat12_inode* dir, const char* name, int flags, fat12_inode* out);
+    // 在dir上创建文件名为name的文件, attr为flags, 创建成功则返回true, 否则false
+    bool create_file(fat12_inode* dir, const char* name, uint8 attr);
     bool create_directory(fat12_inode* dir, const char* name);
     bool remove(fat12_inode* dir, const char* name);
+    bool remove_directory(fat12_inode* dir, const char* name);
 
+    // 文件读写
     int  read(fat12_inode* node, void* buf, int size, int offset);
     int  write(fat12_inode* node, const void* buf, int size, int offset);
+    int  append(fat12_inode* node, const void* buf, int size);
 
-    void flush();
+    // 同步性flush, 包括更新fat, 更新对应entry, 更新文件包含的所有cluster
+    void flush(fat12_inode* node);
+
+    // 释放inode
+    void release_inode(fat12_inode* node);
+
+    // 辅助函数
     uint32 cluster2sector(uint16 cluster);
+    void dump_root_dir();
+    // 传入对应文件夹的inode
+    // -1: invalid dir, 1: empty, 0: not empty
+    int is_dir_empty(fat12_inode* dir);
 private:
     // root表管理
     bool init_root_dir();
     void destroy_root_dir();
-    void dump_root_dir();
+    void flush_root_dir();
 private:
     // cache 管理
 
@@ -106,11 +122,24 @@ private:
     // 一定会返回一个可读写的buffer
     fat12_cluster_buffer* get_cache(uint16 cluster);
 
+    // flush cluster:
+    bool flush_cache(uint16 cluster);
+
     // cache_pool 管理
     bool init_cache_pool();
     // TODO: destroy的时候没有做flush
     void destroy_cache_pool();
+private:
+    // 非法target和找不到返回false, 找到返回true
+    bool find_dir_entry(fat12_inode* target, fat12_entry_location* location);
+    // 包括已删除, 空条目
+    // 非法target返回-1, 找到返回0, 需要扩容处理返回1, 如果是root无法扩容返回2
+    int find_free_entry(fat12_inode* dir, fat12_entry_location* location);
 
+    bool write_dir_entry(const fat12_entry_location& location,
+                        const fat12_normalized_entry& entry);
+    bool delete_dir_entry(const fat12_entry_location& location);
+    
 private:
     // fat表管理
 

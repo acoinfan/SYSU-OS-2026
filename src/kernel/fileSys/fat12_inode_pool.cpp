@@ -39,7 +39,9 @@ fat12_inode* fat12_inode_pool::allocate() {
     }
 }
 
-void fat12_inode_pool::release(uint32 idx) {
+void fat12_inode_pool::release(fat12_inode* ptr) {
+    ASSERT(ptr != nullptr);
+    int idx = ((uint32)ptr - (uint32)inodes) / sizeof(fat12_inode);
     bitmap.release((int)idx, 1);
 }
 
