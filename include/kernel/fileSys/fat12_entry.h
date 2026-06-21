@@ -27,7 +27,7 @@ struct fat12_entry_location {
     bool is_same(const fat12_entry_location& other) const;
 };
 
-// 采用(fat12_fs, start_cluster)唯一标识
+// 采用(start_cluster, location)唯一标识
 // 若是根目录, 则parent_dir_start_cluster = 0, start_cluster = 0;
 struct fat12_inode {
     // char name[32];

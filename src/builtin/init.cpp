@@ -25,6 +25,8 @@ void init(void* arg) {
             }
             yield();
             continue;
+        } else {
+            write("init rape 1 process\n");
         }
         ;
     }

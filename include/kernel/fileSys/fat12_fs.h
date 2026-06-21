@@ -99,7 +99,8 @@ public:
 
     // 同步性flush, 包括更新fat, 更新对应entry, 更新文件包含的所有cluster
     void flush(fat12_inode* node);
-
+    void flush_all();
+    
     // 释放inode
     void release_inode(fat12_inode* node);
 
@@ -130,7 +131,6 @@ private:
     bool flush_all_cache();
     // cache_pool 管理
     bool init_cache_pool();
-    // TODO: destroy的时候没有做flush
     bool destroy_cache_pool();
 private:
     // 非法target和找不到返回false, 找到返回true

@@ -1179,3 +1179,45 @@ bool FAT12_FS::flush_all_cache() {
     }
     return res;
 }
+
+void FAT12_FS::flush(fat12_inode* node) {
+    // 刷新fat表
+    flush_fat_table();
+
+    // 刷新cache
+    uint16 cnt_cluster = node->start_cluster;
+    while (cnt_cluster >= 2 && cnt_cluster <= 0xFF7) {
+        flush_cache(cnt_cluster);
+        cnt_cluster = fat_table[cnt_cluster];
+    }
+
+    // 注意：inode 里没有 name，所以这里要先根据 inode 找到目录项位置
+    // 刷新entry
+    fat12_normalized_entry* entry;
+    if (node->location.is_root) {
+        entry = &root_dir[node->location.root_index];
+        entry->start_cluster = node->start_cluster;
+        entry->file_size = node->size;
+        root_dir_dirty = true;
+    } else {
+        fat12_cluster_buffer* parent_cache = get_cache(node->location.current_cluster);
+        fat12_entry_buf entry_buf;
+        entry_buf.reset();
+        if (entry_buf.read(parent_cache->buf + node->location.entry_index_in_cluster * FAT12_ENTRY_BYTES)) {
+            entry_buf.normalized_entry.start_cluster = node->start_cluster;
+            entry_buf.normalized_entry.file_size = node->size;
+            if (!entry_buf.write(parent_cache->buf + node->location.entry_index_in_cluster * FAT12_ENTRY_BYTES, false)) {
+                PANIC("Fail to update file size in FAT12_FS::flush");                        
+            }
+            parent_cache->dirty = true;
+        } else {
+            PANIC("Fail to update file size in FAT12_FS::flush");
+        }
+    }   
+}
+
+void FAT12_FS::flush_all() {
+    flush_root_dir();
+    flush_all_cache();
+    flush_fat_table();
+}
