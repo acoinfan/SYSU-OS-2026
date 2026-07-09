@@ -19,7 +19,6 @@ set pagination off
 # c
 # b ProgramManager::fork
 # b ProgramManager::executeProcess
-b setup.cpp:225
-b append
+b setup_kernel
 c
 layout src

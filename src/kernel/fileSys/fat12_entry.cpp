@@ -123,12 +123,12 @@ void fat12_entry_buf::reset() {
 }
 
 void fat12_inode::dump() {
-    test_log_printf("size = %d\n"
-        "start_cluster = %d\n"
-        "parent_dir_start_cluster = %d\n"
-        "attr = %x\n"
-        "refCount = %d\n",
-        size, start_cluster, parent_dir_start_cluster, attr, refcount);
+    // test_log_printf("size = %d\n"
+    //     "start_cluster = %d\n"
+    //     "parent_dir_start_cluster = %d\n"
+    //     "attr = %x\n"
+    //     "refCount = %d\n",
+    //     size, start_cluster, parent_dir_start_cluster, attr, refcount);
 }
 
 bool fat12_dir_iter::init(FAT12_FS* fs, fat12_inode* dir) {

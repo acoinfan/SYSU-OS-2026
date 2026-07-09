@@ -1,15 +1,22 @@
 include ../../build/config.mk
 
-.PHONY: all clean
-all: $(OBJDIR)/boot/mbr.bin $(OBJDIR)/boot/bootloader.bin $(OBJDIR)/boot/entry.obj
+.PHONY: all pre bootloader clean FORCE
+
+KERNEL_SECTOR_COUNT ?= 145
+
+all: pre bootloader
+
+pre: $(OBJDIR)/boot/mbr.bin $(OBJDIR)/boot/entry.obj $(OBJDIR)/boot/page.o
+
+bootloader: $(OBJDIR)/boot/bootloader.bin
 
 $(OBJDIR)/boot/mbr.bin: mbr.asm
 	@mkdir -p $(dir $@)
 	$(ASM_COMPILER) -o $@ -f bin $(BOOT_INCLUDE) $<
 
-$(OBJDIR)/boot/bootloader.bin: bootloader.asm $(OBJDIR)/boot/page.o
+$(OBJDIR)/boot/bootloader.bin: bootloader.asm $(OBJDIR)/boot/page.o FORCE
 	@mkdir -p $(dir $@)
-	$(ASM_COMPILER) -o $(OBJDIR)/boot/bootloader.o $(ASM_FLAGS) $(BOOT_INCLUDE) $<
+	$(ASM_COMPILER) -DKERNEL_SECTOR_COUNT=$(KERNEL_SECTOR_COUNT) -o $(OBJDIR)/boot/bootloader.o $(ASM_FLAGS) $(BOOT_INCLUDE) $<
 
 	$(LINKER) -o $(OBJDIR)/boot/bootloader.obj -melf_i386 -N \
 	$(OBJDIR)/boot/bootloader.o \

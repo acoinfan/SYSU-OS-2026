@@ -42,10 +42,10 @@ static void test_fat12_fs()
     asm_delay(5000000000);
     test_log_printf("[1] mount and dump root dir\n");
     if (!fs.mount(IdeDrive::PrimarySlave)) {
-        test_log_printf("mount fail\n");
+        test_log_printf("[fail] mount fail\n");
         return;
     }
-    test_log_printf("mount done\n");
+    test_log_printf("[ok] mount done\n");
     fs.dump_root_dir();
 
     asm_delay(5000000000);
@@ -54,7 +54,7 @@ static void test_fat12_fs()
     test_log_printf("[2] lookup / read / write / append in dir1\n");
     dir1 = fs.lookup(root, "dir1");
     if (!dir1) {
-        test_log_printf("lookup dir1 failed\n");
+        test_log_printf("[fail] lookup dir1 failed\n");
         fs.umount();
         return;
     }
@@ -63,7 +63,7 @@ static void test_fat12_fs()
     asm_delay(5000000000);
     testf = fs.lookup(dir1, "testf");
     if (!testf) {
-        test_log_printf("lookup dir1/testf failed\n");
+        test_log_printf("[fail] lookup dir1/testf failed\n");
         fs.release_inode(dir1);
         fs.umount();
         return;
@@ -95,44 +95,44 @@ static void test_fat12_fs()
 
     fs.release_inode(testf);
     fs.release_inode(dir1);
-
+    
     asm_delay(5000000000);
     test_log_printf("[3] create / duplicate-create / remove file\n");
     if (fs.create_file(root, "hello.txt", fat12_attr::ARCHIVE)) {
-        test_log_printf("create hello.txt ok\n");
+        test_log_printf("[ok] create hello.txt ok\n");
     } else {
-        test_log_printf("create hello.txt failed\n");
+        test_log_printf("[fail] create hello.txt failed\n");
     }
     if (!fs.create_file(root, "hello.txt", fat12_attr::ARCHIVE)) {
-        test_log_printf("duplicate create rejected\n");
+        test_log_printf("[ok] duplicate create rejected\n");
     } else {
-        test_log_printf("duplicate create should fail but passed\n");
+        test_log_printf("[fail] duplicate create should fail but passed\n");
     }
     fs.dump_root_dir();
 
     hello = fs.lookup(root, "hello.txt");
     if (!hello) {
-        test_log_printf("lookup hello.txt failed\n");
+        test_log_printf("[fail] lookup hello.txt failed\n");
     } else {
         hello->dump();
         if (!fs.remove(root, "hello.txt"))
         {
-            test_log_printf("remove hello.txt blocked by refcount\n");
+            test_log_printf("[ok] remove hello.txt blocked by refcount\n");
         }
         else
         {
-            test_log_printf("remove hello.txt should fail but passed\n");
+            test_log_printf("[fail] remove hello.txt should fail but passed\n");
         }
         fs.release_inode(hello);
         hello = nullptr;
 
         if (fs.remove(root, "hello.txt"))
         {
-            test_log_printf("remove hello.txt ok after release\n");
+            test_log_printf("[ok] remove hello.txt ok after release\n");
         }
         else
         {
-            test_log_printf("remove hello.txt failed after release\n");
+            test_log_printf("[fail] remove hello.txt failed after release\n");
         }
     }
     fs.dump_root_dir();
@@ -140,14 +140,14 @@ static void test_fat12_fs()
     asm_delay(5000000000);
     test_log_printf("[4] create / duplicate-create / remove directory\n");
     if (fs.create_directory(root, "firstdir")) {
-        test_log_printf("create firstdir ok\n");
+        test_log_printf("[ok] create firstdir ok\n");
     } else {
-        test_log_printf("create firstdir failed\n");
+        test_log_printf("[fail] create firstdir failed\n");
     }
     if (!fs.create_directory(root, "firstdir")) {
-        test_log_printf("duplicate dir rejected\n");
+        test_log_printf("[ok] duplicate dir rejected\n");
     } else {
-        test_log_printf("duplicate dir should fail but passed\n");
+        test_log_printf("[fail] duplicate dir should fail but passed\n");
     }
     fs.dump_root_dir();
 
@@ -156,22 +156,22 @@ static void test_fat12_fs()
         firstdir->dump();
         if (!fs.remove_directory(root, "firstdir"))
         {
-            test_log_printf("remove firstdir blocked or not empty\n");
+            test_log_printf("[ok] remove firstdir blocked or not empty\n");
         }
         else
         {
-            test_log_printf("remove firstdir should fail if in use\n");
+            test_log_printf("[fail] remove firstdir should fail if in use\n");
         }
         fs.release_inode(firstdir);
         firstdir = nullptr;
 
         if (fs.remove_directory(root, "firstdir"))
         {
-            test_log_printf("remove firstdir ok after release\n");
+            test_log_printf("[ok] remove firstdir ok after release\n");
         }
         else
         {
-            test_log_printf("remove firstdir failed after release\n");
+            test_log_printf("[fail] remove firstdir failed after release\n");
         }
     }
     fs.dump_root_dir();
@@ -179,17 +179,17 @@ static void test_fat12_fs()
     asm_delay(5000000000);
     test_log_printf("[5] umount and remount\n");
     if (!fs.umount()) {
-        test_log_printf("umount failed\n");
+        test_log_printf("[fail] umount failed\n");
         return;
     }
-    test_log_printf("umount ok\n");
+    test_log_printf("[ok] umount ok\n");
 
     asm_delay(5000000000);
     if (!fs.mount(IdeDrive::PrimarySlave)) {
-        test_log_printf("remount fail\n");
+        test_log_printf("[fail] remount fail\n");
         return;
     }
-    test_log_printf("remount ok\n");
+    test_log_printf("[ok] remount ok\n");
     fs.dump_root_dir();
 
     asm_delay(5000000000);
@@ -215,16 +215,16 @@ static void test_fat12_fs()
         if (log_file) {
             fs.release_inode(log_file);
             if (!fs.remove(nullptr, "fat12.log")) {
-                test_log_printf("remove old fat12.log failed\n");
+                test_log_printf("[fail] remove old fat12.log failed\n");
             }
         }
 
         if (!fs.create_file(nullptr, "fat12.log", fat12_attr::ARCHIVE)) {
-            test_log_printf("create fat12.log failed\n");
+            test_log_printf("[fail] create fat12.log failed\n");
         } else {
             log_file = fs.lookup(nullptr, "fat12.log");
             if (!log_file) {
-                test_log_printf("lookup fat12.log failed\n");
+                test_log_printf("[fail] lookup fat12.log failed\n");
             } else {
                 int log_size = debug_log_size();
                 int written = fs.append(log_file, debug_log_data(), log_size);
@@ -462,20 +462,19 @@ extern "C" void setup_kernel()
     // 中断管理器
     interruptManager.initialize();
     interruptManager.setTimeInterrupt((void *)asm_time_interrupt_handler);
-    interruptManager.enableTimeInterrupt();
-
+    
     // 输出管理器
     screen.initialize();
-
+    kprintf("test%x\n", 1);
     // 进程/线程管理器
     programManager.initialize(SchedulerType::RR);
-
+    
     // 内存管理器
     memoryManager.initialize();
-
+    
     // 初始化系统调用
     systemService.initialize();
-
+    
     // 创建第一个线程
     int pid = programManager.executeThread(idle_thread, nullptr, "idle thread", 1, true);
     if (pid == -1)
@@ -483,24 +482,25 @@ extern "C" void setup_kernel()
         kprintf("can not execute thread\n");
         asm_halt();
     }
-
+    
     PCB *firstThread;
     PCB rubbish;
-
+    
     switch (programManager.sType)
     {
-    case SchedulerType::RR:
+        case SchedulerType::RR:
         firstThread = programManager.rrScheduler.pickNext();
         break;
-    case SchedulerType::FIFS:
+        case SchedulerType::FIFS:
         firstThread = programManager.fifsScheduler.pickNext();
         break;
     }
     firstThread->status = ProgramStatus::RUNNING;
     programManager.running = firstThread;
-
+    
     // 第一次切换 pid=0
-
+    
+    interruptManager.enableTimeInterrupt();
     asm_switch_thread(&rubbish, firstThread);
     asm_halt();
 }

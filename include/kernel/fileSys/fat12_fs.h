@@ -91,26 +91,28 @@ public:
     bool create_directory(fat12_inode* dir, const char* name);
     bool remove(fat12_inode* dir, const char* name);
     bool remove_directory(fat12_inode* dir, const char* name);
-
+    
     // 文件读写
     int  read(fat12_inode* node, void* buf, int size, int offset);
     int  write(fat12_inode* node, const void* buf, int size, int offset);
     int  append(fat12_inode* node, const void* buf, int size);
-
+    
     // 同步性flush, 包括更新fat, 更新对应entry, 更新文件包含的所有cluster
     void flush(fat12_inode* node);
     void flush_all();
     
     // 释放inode
     void release_inode(fat12_inode* node);
-
+    
     // 辅助函数
     uint32 cluster2sector(uint16 cluster);
     void dump_root_dir();
     // 传入对应文件夹的inode
     // -1: invalid dir, 1: empty, 0: not empty
     int is_dir_empty(fat12_inode* dir);
+    
 private:
+    fat12_inode* FAT12_FS::lookup_threadunsafe(fat12_inode* dir, const char* name);
     // root表管理
     bool init_root_dir();
     bool destroy_root_dir();

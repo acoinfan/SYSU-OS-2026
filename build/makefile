@@ -1,5 +1,5 @@
 include config.mk
-.PHONY: all build kernel user clean run debug gdb test libs export export-log
+.PHONY: all build kernel user clean run debug gdb test libs export export-log boot-pre bootloader
 
 all: build
 
@@ -12,21 +12,27 @@ builtin:
 	$(MAKE) -C ../src/builtin
 	@echo "builtin objects ready"
 
-boot:
-	$(MAKE) -C ../src/boot
-	@echo "boot objects ready"
+boot-pre:
+	$(MAKE) -C ../src/boot pre
+	@echo "boot pre objects ready"
 
-kernel:
+bootloader: kernel
+	@KERNEL_SECTORS=$$((($$(wc -c < $(OBJDIR)/boot/kernel.bin) + 511) / 512)); \
+	$(MAKE) -C ../src/boot bootloader KERNEL_SECTOR_COUNT=$$KERNEL_SECTORS
+	@echo "bootloader ready"
+
+kernel: libs builtin boot-pre
 	$(MAKE) -C ../src/kernel
 	@echo "kernel objects ready"
 
 user: $(USER_OBJS)
 	@echo "user objects ready: $^"
 
-image: libs builtin boot kernel  
+image: bootloader
 	dd if=$(OBJDIR)/boot/mbr.bin of=$(RUNDIR)/hd.img bs=512 count=1 seek=0 conv=notrunc
 	dd if=$(OBJDIR)/boot/bootloader.bin of=$(RUNDIR)/hd.img bs=512 count=5 seek=1 conv=notrunc
-	dd if=$(OBJDIR)/boot/kernel.bin of=$(RUNDIR)/hd.img bs=512 count=145 seek=6 conv=notrunc
+	@KERNEL_SECTORS=$$((($$(wc -c < $(OBJDIR)/boot/kernel.bin) + 511) / 512)); \
+	dd if=$(OBJDIR)/boot/kernel.bin of=$(RUNDIR)/hd.img bs=512 count=$$KERNEL_SECTORS seek=6 conv=notrunc,sync
 	@mkdir -p $(RUNDIR)/test
 	dd if=/dev/zero of=$(RUNDIR)/test.img bs=1M count=8
 

@@ -55,3 +55,12 @@ AllocPCB -> initialize Para -> schedule Thread -> switch cr3 ->loadProcess -> Pr
         (fork or executeProcess)
 
 // DEBUG: 请找debug.h
+
+// fileSys中断管理
+Fat12_FS关中断:
+flush, flush_fat_table, read_fat_table, flush_root_dir, destroy_root_dir, destroy_cache_pool
+get_cache, put_cache, release_node, lookup
+
+FileManager关中断:
+mount, umount, open, close, create, remove, createDir, removeDir, lookup
+可能: ls, cd?

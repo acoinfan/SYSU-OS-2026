@@ -140,6 +140,10 @@ bool FAT12_FS::init_cache_pool() {
 }
 
 bool FAT12_FS::destroy_cache_pool() {
+    // 关中断
+    bool status = interruptManager.getInterruptStatus();
+    interruptManager.disableInterrupt();
+    
     ASSERT(this->cluster_size != 0);
     uint32 page_count = (this->cluster_size + PAGE_SIZE - 1) / PAGE_SIZE;
     bool res = flush_all_cache();
@@ -151,10 +155,16 @@ bool FAT12_FS::destroy_cache_pool() {
             break;
         }
     }
+    // 恢复中断
+    interruptManager.setInterruptStatus(status);
     return res;
 }
 
 bool FAT12_FS::read_fat_table() {
+    // 关中断
+    bool status = interruptManager.getInterruptStatus();
+    interruptManager.disableInterrupt();
+
     uint16 total_fat_sectors = bpb.fat_size_16;
     uint16 fat1_start_sector = bpb.reserved_sector_count;
     uint32 idx = 0;
@@ -171,6 +181,8 @@ bool FAT12_FS::read_fat_table() {
                         (void*)((uint32)tmp_sector_buffer + FAT12_SECTOR_SIZE * 2));
         
         if (!res) {
+            // 恢复中断
+            interruptManager.setInterruptStatus(status);
             return false;
         }
         
@@ -201,10 +213,16 @@ bool FAT12_FS::read_fat_table() {
             fat_table[idx] = value;            
         }
     }
+    // 恢复中断
+    interruptManager.setInterruptStatus(status);
     return res;
 }
 
 bool FAT12_FS::flush_fat_table() {
+    // 关中断
+    bool status = interruptManager.getInterruptStatus();
+    interruptManager.disableInterrupt();
+
     uint16 total_fat_sectors = bpb.fat_size_16;
     uint16 fat1_start_sector = bpb.reserved_sector_count;
     uint32 idx = 0;
@@ -234,9 +252,13 @@ bool FAT12_FS::flush_fat_table() {
                         (void*)((uint32)tmp_sector_buffer + FAT12_SECTOR_SIZE * 2));
         
         if (!res) {
+            // 恢复中断
+            interruptManager.setInterruptStatus(status);
             return false;
         }
     }
+    // 恢复中断
+    interruptManager.setInterruptStatus(status);
     return res;    
 }
 
@@ -315,6 +337,16 @@ void FAT12_FS::free_cluster(uint16 idx) {
 }
 
 fat12_inode* FAT12_FS::lookup(fat12_inode* dir, const char* name) {
+    // 关中断
+    bool status = interruptManager.getInterruptStatus();
+    interruptManager.disableInterrupt();
+    fat12_inode* res = lookup_threadunsafe(dir, name);
+    // 恢复中断
+    interruptManager.setInterruptStatus(status);
+    return res;        
+}
+
+fat12_inode* FAT12_FS::lookup_threadunsafe(fat12_inode* dir, const char* name) {
     // 判断是否是根目录
     fat12_entry_buf entry_buf;
     fat12_inode* res = nullptr;
@@ -426,12 +458,18 @@ fat12_inode* FAT12_FS::lookup(fat12_inode* dir, const char* name) {
 }
 
 bool FAT12_FS::init_root_dir() {
+    // 关中断
+    bool status = interruptManager.getInterruptStatus();
+    interruptManager.disableInterrupt();
+
     fat12_entry_buf entry_buf;
     // 初始化root_table
     uint32 root_bytes = this->root_entries * sizeof(fat12_normalized_entry);
     this->root_pages = (root_bytes + PAGE_SIZE - 1) / PAGE_SIZE;
     this->root_dir = (fat12_normalized_entry*)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, this->root_pages, VP_RW);
     if (!this->root_dir) {
+        // 恢复中断
+        interruptManager.setInterruptStatus(status);
         // TODO 记得释放
         return false;
     }
@@ -461,10 +499,17 @@ bool FAT12_FS::init_root_dir() {
         }
     }
     this->root_dir_dirty = false;
+
+    // 恢复中断
+    interruptManager.setInterruptStatus(status);
     return true;
 }
 
 bool FAT12_FS::flush_root_dir() {
+    // 关中断
+    bool status = interruptManager.getInterruptStatus();
+    interruptManager.disableInterrupt();
+
     fat12_entry_buf entry_buf;
     uint32 end_sector = this->root_sector_count + this->root_start_sector;
     uint32 entry_idx = 0;
@@ -493,12 +538,22 @@ bool FAT12_FS::flush_root_dir() {
         res &= ide_write_sector(device, sector_idx, tmp_sector_buffer);
     }
     this->root_dir_dirty = false;
+
+    // 恢复中断
+    interruptManager.setInterruptStatus(status);
     return res;
 }
 
 bool FAT12_FS::destroy_root_dir() {
+    // 关中断
+    bool status = interruptManager.getInterruptStatus();
+    interruptManager.disableInterrupt();
+
     bool res = flush_root_dir();
     memoryManager.releasePages(AddressPoolType::KERNEL, (int)this->root_dir, this->root_pages);
+    
+    // 恢复中断
+    interruptManager.setInterruptStatus(status);
     return res;
 }
 
@@ -1146,12 +1201,17 @@ bool FAT12_FS::remove_directory(fat12_inode* dir, const char* name) {
 
 
 void FAT12_FS::release_inode(fat12_inode* node) {
+    // 关中断
+    bool status = interruptManager.getInterruptStatus();
+    interruptManager.disableInterrupt();
     if (node && node->fat12_fs == this) {
         node->refcount--;
         if (node->refcount <= 0) {
             inodepool.release(node);
         }
     }
+    // 恢复中断
+    interruptManager.setInterruptStatus(status);    
 }
 
 int FAT12_FS::is_dir_empty(fat12_inode* dir) {
@@ -1166,21 +1226,38 @@ int FAT12_FS::is_dir_empty(fat12_inode* dir) {
 
 // flush cluster:
 bool FAT12_FS::flush_cache(uint16 cluster) {
+    // 关中断
+    bool status = interruptManager.getInterruptStatus();
+    interruptManager.disableInterrupt();
     int idx = find_cache(cluster);
-    if (idx == -1) return true;
-    return cache_pool[idx].write_cluster(this);
+
+    bool res = true;
+    if (idx != -1) res = cache_pool[idx].write_cluster(this);
+
+    // 恢复中断
+    interruptManager.setInterruptStatus(status);
+    return res;    
 }
 
 // flush all cache
 bool FAT12_FS::flush_all_cache() {
+    // 关中断
+    bool status = interruptManager.getInterruptStatus();
+    interruptManager.disableInterrupt();
     bool res = true;
     for (uint32 i = 0; i < FAT12_MAX_CACHE; i++) {
         res &= cache_pool[i].write_cluster(this);
     }
+    // 恢复中断
+    interruptManager.setInterruptStatus(status);
     return res;
 }
 
 void FAT12_FS::flush(fat12_inode* node) {
+    // 关中断
+    bool status = interruptManager.getInterruptStatus();
+    interruptManager.disableInterrupt();
+
     // 刷新fat表
     flush_fat_table();
 
@@ -1214,10 +1291,18 @@ void FAT12_FS::flush(fat12_inode* node) {
             PANIC("Fail to update file size in FAT12_FS::flush");
         }
     }   
+
+    // 恢复中断
+    interruptManager.setInterruptStatus(status);
 }
 
 void FAT12_FS::flush_all() {
+    // 关中断
+    bool status = interruptManager.getInterruptStatus();
+    interruptManager.disableInterrupt();
     flush_root_dir();
     flush_all_cache();
     flush_fat_table();
+    // 恢复中断
+    interruptManager.setInterruptStatus(status);
 }
