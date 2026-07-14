@@ -60,4 +60,7 @@ void k_execveFunc(uint32 func);
 void syscall_execveFunc(uint32 func);
 
 uint32 syscall_expandHeap(uint32 pageCount);
+
+int syscall_open(const char* path, int flags);
+int syscall_close(int fd);
 #endif

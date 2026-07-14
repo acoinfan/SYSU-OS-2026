@@ -45,6 +45,10 @@ uint32 expandHeap(uint32 pageCount) {
     return _syscall1(SYS_EXPANDHEAP, pageCount);
 }
 
+int close(int fd) {
+    return (int)_syscall1(SYS_CLOSE, (uint32)fd);
+}
+
 // 2 Args
 int waitpid(int pid, int* retval) {
     return (int)_syscall2(SYS_WAIT, (uint32)pid, (uint32)retval);
@@ -52,6 +56,10 @@ int waitpid(int pid, int* retval) {
 
 void move_cursor(int row, int col) {
     _syscall2(SYS_MOVE_CURSOR, (uint32)row, (uint32)col);
+}
+
+int open(const char* path, int flags) {
+    return (int)_syscall2(SYS_OPEN, (uint32)path, (uint32)flags);
 }
 
 // 对原有函数的复用

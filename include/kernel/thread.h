@@ -80,7 +80,7 @@ struct PCB
     // int argc;
     // char** envp = nullptr;
     fs_context fs_info;
-    File* fd_table;             // 最多256个
+    File fd_table[MAX_FD_COUNT]; // per-process file descriptor table
 };
 
 /*

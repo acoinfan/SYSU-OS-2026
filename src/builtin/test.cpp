@@ -132,3 +132,33 @@ void stack_test() {
     write("done\n");
     return;
 }
+
+void test_file_open_close(void* arg) {
+    write("[file_test] begin\n");
+
+    int fd0 = open("/dir1/testf", 0);
+    printf("[file_test] open /dir1/testf -> %d\n", fd0);
+
+    int fd1 = open("/dir1/testf", 0);
+    printf("[file_test] open same file again -> %d\n", fd1);
+
+    int fd_bad = open("/dir1/not_exist", 0);
+    printf("[file_test] open missing file -> %d\n", fd_bad);
+
+    int close0 = close(fd0);
+    printf("[file_test] close fd0 -> %d\n", close0);
+
+    int close1 = close(fd1);
+    printf("[file_test] close fd1 -> %d\n", close1);
+
+    int close_again = close(fd1);
+    printf("[file_test] close fd1 again -> %d\n", close_again);
+
+    int fd2 = open("/dir1/testf", 0);
+    printf("[file_test] reopen after close -> %d\n", fd2);
+
+    int close2 = close(fd2);
+    printf("[file_test] close fd2 -> %d\n", close2);
+
+    write("[file_test] end\n");
+}

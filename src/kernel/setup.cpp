@@ -11,6 +11,7 @@
 #include "test.h"
 #include "debug.h"
 #include "init.h"
+#include "fileSys/file_manager.h"
 
 // #include "fileSys/disk_driver.h" // for debug
 // 屏幕IO处理器
@@ -25,6 +26,8 @@ MemoryManager memoryManager;
 TSS tss;
 // 系统调用
 SystemService systemService;
+// 文件管理器
+FileManager fileManager;
 
 static void test_fat12_fs()
 {
@@ -436,7 +439,7 @@ void idle_thread(void *arg)
     // programManager.executeProcess((const char *)init, 0, 1);
     uint32 count = 0;
     // sleep
-    test_fat12_fs();
+    // test_fat12_fs();
     kprintf("idling\n");
     while (1)
     {
@@ -474,6 +477,16 @@ extern "C" void setup_kernel()
     
     // 初始化系统调用
     systemService.initialize();
+
+    // 文件管理器
+    fileManager.initialize(IdeDrive::PrimarySlave, fs_type::FXT12);
+    
+    int testPid = programManager.executeThread(test_file_open_close, nullptr, "file open close test", 1, true);
+    if (testPid == -1)
+    {
+        kprintf("can not execute file open close test\n");
+        asm_halt();
+    }
     
     // 创建第一个线程
     int pid = programManager.executeThread(idle_thread, nullptr, "idle thread", 1, true);

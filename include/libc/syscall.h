@@ -26,10 +26,14 @@ void execveFunc(uint32 func_addr);
 
 uint32 expandHeap(uint32 pageCount);
 
+int close(int fd);
+
 // 2 Args
 int waitpid(int pid, int* retval);
 
 void move_cursor(int row, int col);
+
+int open(const char* path, int flags);
 
 // 复用waitpid
 int wait(int* retval);

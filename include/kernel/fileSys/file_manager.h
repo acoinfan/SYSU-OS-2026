@@ -6,11 +6,12 @@
 #include "fileSys/file_type.h"
 #include "enum.h"
 
-#define MAX_FD_COUNT     1024
-#define MAX_MOUNT_COUNT  2
-#define MAX_DISK_COUNT   4
-#define MAX_DISK_NAME    32
-#define MAX_FILESYS_SIZE 4096
+#define MAX_OPENFILE_COUNT     1024
+#define MAX_MOUNT_COUNT        2
+#define MAX_DISK_COUNT         4
+#define MAX_DISK_NAME          32
+#define MAX_FILESYS_SIZE       4096
+#define MAX_PATH_LENGTH        256
 
 struct FS_info {
     char disk_name[MAX_DISK_NAME];
@@ -25,7 +26,9 @@ struct FileEntry {
 
 class FileManager {
 public:
-    File fd_table[MAX_FD_COUNT];
+    OpenFile openfile_table[MAX_OPENFILE_COUNT];
+    char openfile_bitmap[(MAX_OPENFILE_COUNT + 7) / 8];
+    BitMap openfile_map;
 
     // idx = 0是root
     FS_info fs_table[MAX_DISK_COUNT];
@@ -45,19 +48,24 @@ public:
     int mount(const char* disk_name, IdeDrive disk, fs_type fs_t);
     int umount(const char* disk_name);
 
-    File* lookup(const char* path);
+    OpenFile* lookup(const char* path);
     int create(const char* path, int flags);
     int remove(const char* path);
 
+    // Path helpers. Return 0 on success, negative on invalid/too long input.
+    int normalizePath(const char* cwd, const char* path, char* out);
+    int normalizePath(const char* path, char* out);
+    int splitPath(const char* path, char* parent, char* name);
+
     // File* get_cwd(PCB* p);
     // int cd(PCB* p, const char* path);
-    int ls(File* dir, FileEntry* entries, int max_entries);
+    int ls(OpenFile* dir, FileEntry* entries, int max_entries);
     int mkdir(const char* path);
     int rmdir(const char* path);
 private:
-    int allocate_fd();
-    void release_fd(int idx);
-    File* get_file(int fd);
+    int allocate_openfile();
+    void release_openfile(int idx);
+    OpenFile* get_openfile(int idx);
     // File* lookup(const char* path);
 
 };

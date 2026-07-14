@@ -23,6 +23,8 @@ void SystemService::initialize()
     setSystemCall(SYS_WAIT, (int)syscall_wait);
     setSystemCall(SYS_YIELD, (int)syscall_yield);
     setSystemCall(SYS_WRITE, (int)syscall_write);
+    setSystemCall(SYS_OPEN, (int)syscall_open);
+    setSystemCall(SYS_CLOSE, (int)syscall_close);
     setSystemCall(SYS_MOVE_CURSOR, (int)syscall_move_cursor);
     setSystemCall(SYS_PTE_DUMP, (int)syscall_pte_dump);
     setSystemCall(SYS_PA_DUMP, (int)syscall_pa_dump);
@@ -175,4 +177,12 @@ void syscall_pa_dump() {
 uint32 syscall_expandHeap(uint32 pageCount) {
     return memoryManager.allocatePagesLazy(AddressPoolType::USER, pageCount, 
                                     (VPageFlags)(VP_USER | VP_RW), UserSegment::HEAP);
+}
+
+int syscall_open(const char* path, int flags) {
+    return fileManager.open(path, flags);
+}
+
+int syscall_close(int fd) {
+    return fileManager.close(fd);
 }
