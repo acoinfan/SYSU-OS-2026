@@ -172,8 +172,18 @@ void FileManager::initialize(IdeDrive disk, fs_type fs_t) {
 
 // TODO: 不允许相同disk_name做挂载
 int FileManager::mount(const char* disk_name, IdeDrive disk, fs_type fs_t) {
+    bool status = interruptManager.getInterruptStatus();
+    interruptManager.disableInterrupt();
+    int ret = -1;
+    FS_info* info = nullptr;
+    bool res = false;
+
+    if (total_mount_disk >= MAX_DISK_COUNT) {
+        goto done;
+    }
+
     // 清除已有信息
-    FS_info* info = &fs_table[total_mount_disk];
+    info = &fs_table[total_mount_disk];
     memset(fileSystems + PAGE_SIZE * total_mount_disk, 0, PAGE_SIZE);
     memset(info, 0, sizeof(FS_info));
 
@@ -184,7 +194,6 @@ int FileManager::mount(const char* disk_name, IdeDrive disk, fs_type fs_t) {
     info->type = fs_t;
 
     // 挂载
-    bool res = false;
     switch (fs_table[total_mount_disk].type) {
         case fs_type::FXT12: {
             FAT12_FS* fs = (FAT12_FS*)(fileSystems + total_mount_disk * PAGE_SIZE);
@@ -199,38 +208,51 @@ int FileManager::mount(const char* disk_name, IdeDrive disk, fs_type fs_t) {
     if (res) {
         info->inuse = true;
         total_mount_disk++;
-        return 0;
+        ret = 0;
     } else {
-        return -1;
+        ret = -1;
     }
+
+done:
+    interruptManager.setInterruptStatus(status);
+    return ret;
 }
 
 int FileManager::umount(const char* disk_name) {
+    bool status = interruptManager.getInterruptStatus();
+    interruptManager.disableInterrupt();
+    int ret = 1;
+
     // 不要umount root
     for (int i = 1; i < MAX_DISK_COUNT; i++) {
         FS_info* info = &fs_table[i];
         if (strcmp(info->disk_name, disk_name) == 0) {
             if (!info->inuse) {
-                return -1;  // 并未使用
+                ret = -1;  // 并未使用
+                goto done;
             } else {
                 switch (info->type) {
                     case fs_type::FXT12: {
                         FAT12_FS* fs = (FAT12_FS*)(fileSystems + i * PAGE_SIZE);
                         if (fs->umount()) {
-                            return 0;   // 成功释放
+                            ret = 0;   // 成功释放
                         } else {
-                            return -2;  // 释放了,但是umount失败
+                            ret = -2;  // 释放了,但是umount失败
                         }
+                        goto done;
                         break;
                     }
                     case fs_type::NONE:
-                        return -3;      // 未识别fs属性
+                        ret = -3;      // 未识别fs属性
+                        goto done;
                         break;                    
                 }
             }
         }
     }
-    return 1;   // 未找到对应disk
+done:
+    interruptManager.setInterruptStatus(status);
+    return ret;   // 未找到对应disk
 }
 
 int FileManager::normalizePath(const char* cwd, const char* path, char* out) {
@@ -573,5 +595,63 @@ int FileManager::close(int fd) {
 
 done:
     interruptManager.setInterruptStatus(status);
+    return ret;
+}
+
+int FileManager::read(int fd, void* buf, int size) {
+    PCB* process = programManager.running;
+    if (!process || fd < 0 || fd >= MAX_FD_COUNT || !buf || size <= 0) {
+        return -1;
+    }
+
+    File* file = &process->fd_table[fd];
+    OpenFile* openfile = file->openfile;
+    if (!openfile) {
+        return -1;
+    }
+
+    int ret = -1;
+    switch (openfile->type) {
+        case fs_type::FXT12: {
+            FAT12_FS* fs = (FAT12_FS*)((fat12_inode*)openfile->node)->fat12_fs;
+            ret = fs->read((fat12_inode*)openfile->node, buf, size, file->offset);
+            break;
+        }
+        default:
+            return -1;
+    }
+
+    if (ret > 0) {
+        file->offset += ret;
+    }
+    return ret;
+}
+
+int FileManager::write(int fd, void* buf, int size) {
+    PCB* process = programManager.running;
+    if (!process || fd < 0 || fd >= MAX_FD_COUNT || !buf || size <= 0) {
+        return -1;
+    }
+
+    File* file = &process->fd_table[fd];
+    OpenFile* openfile = file->openfile;
+    if (!openfile) {
+        return -1;
+    }
+
+    int ret = -1;
+    switch (openfile->type) {
+        case fs_type::FXT12: {
+            FAT12_FS* fs = (FAT12_FS*)((fat12_inode*)openfile->node)->fat12_fs;
+            ret = fs->write((fat12_inode*)openfile->node, buf, size, file->offset);
+            break;
+        }
+        default:
+            return -1;
+    }
+
+    if (ret > 0) {
+        file->offset += ret;
+    }
     return ret;
 }

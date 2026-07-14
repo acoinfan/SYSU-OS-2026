@@ -34,6 +34,8 @@ int waitpid(int pid, int* retval);
 void move_cursor(int row, int col);
 
 int open(const char* path, int flags);
+int fdread(int fd, void* buf, int size);
+int fdwrite(int fd, void* buf, int size);
 
 // 复用waitpid
 int wait(int* retval);

@@ -62,6 +62,14 @@ int open(const char* path, int flags) {
     return (int)_syscall2(SYS_OPEN, (uint32)path, (uint32)flags);
 }
 
+int fdread(int fd, void* buf, int size) {
+    return (int)_syscall3(SYS_FDREAD, (uint32)fd, (uint32)buf, (uint32)size);
+}
+
+int fdwrite(int fd, void* buf, int size) {
+    return (int)_syscall3(SYS_FDWRITE, (uint32)fd, (uint32)buf, (uint32)size);
+}
+
 // 对原有函数的复用
 int wait(int* retval) { 
     return waitpid(-1, retval); 

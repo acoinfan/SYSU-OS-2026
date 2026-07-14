@@ -9,5 +9,6 @@ void COW_reader();
 void fork_test();
 void stack_test();
 void test_file_open_close(void* arg);
+void test_file_read_write(void* arg);
 void init_process(void* arg);
 #endif

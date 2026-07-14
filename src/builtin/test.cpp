@@ -1,6 +1,7 @@
 #include "test.h"
 #include "syscall.h"
 #include "stdio.h"
+#include "stdlib.h"
 
 #define USER_VADDR_START 0x8048000
 #define PAGE_SIZE        4096
@@ -161,4 +162,32 @@ void test_file_open_close(void* arg) {
     printf("[file_test] close fd2 -> %d\n", close2);
 
     write("[file_test] end\n");
+}
+
+void test_file_read_write(void* arg) {
+    write("[rw_test] begin\n");
+
+    char buf[64];
+    memset(buf, 0, sizeof(buf));
+
+    int fd = open("/dir1/testf", 0);
+    printf("[rw_test] open -> %d\n", fd);
+
+    int r = fdread(fd, buf, 31);
+    printf("[rw_test] read -> %d, data = %s\n", r, buf);
+    close(fd);
+
+    char patch[] = "HELLO";
+    fd = open("/dir1/testf", 0);
+    int w = fdwrite(fd, patch, 5);
+    printf("[rw_test] write -> %d\n", w);
+    close(fd);
+
+    memset(buf, 0, sizeof(buf));
+    fd = open("/dir1/testf", 0);
+    r = fdread(fd, buf, 31);
+    printf("[rw_test] read after write -> %d, data = %s\n", r, buf);
+    close(fd);
+
+    write("[rw_test] end\n");
 }

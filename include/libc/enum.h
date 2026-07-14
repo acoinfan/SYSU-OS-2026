@@ -138,6 +138,8 @@ enum SyscallType : uint8 {
     SYS_READ, 
     SYS_WRITE, 
     SYS_CLOSE,
+    SYS_FDREAD,
+    SYS_FDWRITE,
     SYS_MOVE_CURSOR,
     SYS_PTE_DUMP,
     SYS_PA_DUMP,

@@ -481,10 +481,17 @@ extern "C" void setup_kernel()
     // 文件管理器
     fileManager.initialize(IdeDrive::PrimarySlave, fs_type::FXT12);
     
-    int testPid = programManager.executeThread(test_file_open_close, nullptr, "file open close test", 1, true);
-    if (testPid == -1)
+    // int testPid = programManager.executeThread(test_file_open_close, nullptr, "file open close test", 1, true);
+    // if (testPid == -1)
+    // {
+    //     kprintf("can not execute file open close test\n");
+    //     asm_halt();
+    // }
+
+    int testPid2 = programManager.executeThread(test_file_read_write, nullptr, "file read write test", 1, true);
+    if (testPid2 == -1)
     {
-        kprintf("can not execute file open close test\n");
+        kprintf("can not execute file read write test\n");
         asm_halt();
     }
     

@@ -63,4 +63,6 @@ uint32 syscall_expandHeap(uint32 pageCount);
 
 int syscall_open(const char* path, int flags);
 int syscall_close(int fd);
+int syscall_fdread(int fd, void* buf, int size);
+int syscall_fdwrite(int fd, void* buf, int size);
 #endif

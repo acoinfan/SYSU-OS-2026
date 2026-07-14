@@ -25,6 +25,8 @@ void SystemService::initialize()
     setSystemCall(SYS_WRITE, (int)syscall_write);
     setSystemCall(SYS_OPEN, (int)syscall_open);
     setSystemCall(SYS_CLOSE, (int)syscall_close);
+    setSystemCall(SYS_FDREAD, (int)syscall_fdread);
+    setSystemCall(SYS_FDWRITE, (int)syscall_fdwrite);
     setSystemCall(SYS_MOVE_CURSOR, (int)syscall_move_cursor);
     setSystemCall(SYS_PTE_DUMP, (int)syscall_pte_dump);
     setSystemCall(SYS_PA_DUMP, (int)syscall_pa_dump);
@@ -185,4 +187,12 @@ int syscall_open(const char* path, int flags) {
 
 int syscall_close(int fd) {
     return fileManager.close(fd);
+}
+
+int syscall_fdread(int fd, void* buf, int size) {
+    return fileManager.read(fd, buf, size);
+}
+
+int syscall_fdwrite(int fd, void* buf, int size) {
+    return fileManager.write(fd, buf, size);
 }
