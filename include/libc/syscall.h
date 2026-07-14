@@ -3,6 +3,10 @@
 
 #include "os_type.h"
 
+#define FSEEK_SET 0
+#define FSEEK_CUR 1
+#define FSEEK_END 2
+
 // 调用
 // 0 Args
 uint16 getpid();
@@ -36,6 +40,14 @@ void move_cursor(int row, int col);
 int open(const char* path, int flags);
 int fdread(int fd, void* buf, int size);
 int fdwrite(int fd, void* buf, int size);
+int fdappend(int fd, void* buf, int size);
+int create_file(const char* path, int flags);
+int remove_file(const char* path);
+int fseek(int fd, int bias, int whence);
+void sync();
+int mkdir(const char* path);
+int rmdir(const char* path);
+int fd_dump(int fd);
 
 // 复用waitpid
 int wait(int* retval);

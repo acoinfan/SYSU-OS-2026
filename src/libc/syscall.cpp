@@ -70,6 +70,38 @@ int fdwrite(int fd, void* buf, int size) {
     return (int)_syscall3(SYS_FDWRITE, (uint32)fd, (uint32)buf, (uint32)size);
 }
 
+int fdappend(int fd, void* buf, int size) {
+    return (int)_syscall3(SYS_FDAPPEND, (uint32)fd, (uint32)buf, (uint32)size);
+}
+
+int create_file(const char* path, int flags) {
+    return (int)_syscall2(SYS_CREATE_FILE, (uint32)path, (uint32)flags);
+}
+
+int remove_file(const char* path) {
+    return (int)_syscall1(SYS_REMOVE_FILE, (uint32)path);
+}
+
+int fseek(int fd, int bias, int whence) {
+    return (int)_syscall3(SYS_FSEEK, (uint32)fd, (uint32)bias, (uint32)whence);
+}
+
+void sync() {
+    _syscall0(SYS_SYNC);
+}
+
+int mkdir(const char* path) {
+    return (int)_syscall1(SYS_MKDIR, (uint32)path);
+}
+
+int rmdir(const char* path) {
+    return (int)_syscall1(SYS_RMDIR, (uint32)path);
+}
+
+int fd_dump(int fd) {
+    return (int)_syscall1(SYS_FD_DUMP, (uint32)fd);
+}
+
 // 对原有函数的复用
 int wait(int* retval) { 
     return waitpid(-1, retval); 

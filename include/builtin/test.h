@@ -10,5 +10,7 @@ void fork_test();
 void stack_test();
 void test_file_open_close(void* arg);
 void test_file_read_write(void* arg);
+void test_file_append_create_remove_seek(void* arg);
+void test_vfs_full(void* arg);
 void init_process(void* arg);
 #endif

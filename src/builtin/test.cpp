@@ -191,3 +191,134 @@ void test_file_read_write(void* arg) {
 
     write("[rw_test] end\n");
 }
+
+void test_file_append_create_remove_seek(void* arg) {
+    write("[append_test] begin\n");
+
+    int cr = create_file("/vfsnew.txt", 0);
+    printf("[append_test] create /vfsnew.txt -> %d\n", cr);
+
+    int fd = open("/vfsnew.txt", 0);
+    printf("[append_test] open new file -> %d\n", fd);
+
+    char part1[] = "abc";
+    int a1 = fdappend(fd, part1, 3);
+    printf("[append_test] append abc -> %d\n", a1);
+
+    char part2[] = "def";
+    int a2 = fdappend(fd, part2, 3);
+    printf("[append_test] append def -> %d\n", a2);
+
+    int seek0 = fseek(fd, 0, FSEEK_SET);
+    printf("[append_test] seek set 0 -> %d\n", seek0);
+
+    char buf[16];
+    memset(buf, 0, sizeof(buf));
+    int r = fdread(fd, buf, 6);
+    printf("[append_test] read all -> %d, data = %s\n", r, buf);
+
+    int seek_cur = fseek(fd, -3, FSEEK_CUR);
+    printf("[append_test] seek cur -3 -> %d\n", seek_cur);
+
+    memset(buf, 0, sizeof(buf));
+    r = fdread(fd, buf, 3);
+    printf("[append_test] read tail -> %d, data = %s\n", r, buf);
+
+    int seek_end = fseek(fd, 0, FSEEK_END);
+    printf("[append_test] seek end -> %d\n", seek_end);
+
+    int rm_busy = remove_file("/vfsnew.txt");
+    printf("[append_test] remove while open -> %d\n", rm_busy);
+
+    int c = close(fd);
+    printf("[append_test] close new file -> %d\n", c);
+
+    int rm = remove_file("/vfsnew.txt");
+    printf("[append_test] remove after close -> %d\n", rm);
+
+    int fd_bad = open("/vfsnew.txt", 0);
+    printf("[append_test] open removed file -> %d\n", fd_bad);
+    if (fd_bad >= 0) {
+        close(fd_bad);
+    }
+
+    int keep_cr = create_file("/vfskeep.txt", 0);
+    printf("[append_test] create /vfskeep.txt -> %d\n", keep_cr);
+
+    int keep_fd = open("/vfskeep.txt", 0);
+    printf("[append_test] open keep file -> %d\n", keep_fd);
+    if (keep_fd >= 0) {
+        char keep[] = "create append fseek ok\n";
+        int keep_append = fdappend(keep_fd, keep, 23);
+        printf("[append_test] append keep file -> %d\n", keep_append);
+        close(keep_fd);
+    }
+
+    sync();
+    write("[append_test] sync done\n");
+
+    write("[append_test] end\n");
+}
+
+void test_vfs_full(void* arg) {
+    write("[vfs_full] begin\n");
+
+    int mk0 = mkdir("/vfsa");
+    printf("[vfs_full] mkdir /vfsa -> %d\n", mk0);
+
+    int mk1 = mkdir("/vfsa/sub");
+    printf("[vfs_full] mkdir /vfsa/sub -> %d\n", mk1);
+
+    int cf = create_file("/vfsa/sub/data.txt", 0);
+    printf("[vfs_full] create /vfsa/sub/data.txt -> %d\n", cf);
+
+    int fd = open("/vfsa/sub/data.txt", 0);
+    printf("[vfs_full] open data -> %d\n", fd);
+    if (fd >= 0) {
+        char data[] = "nested vfs file\n";
+        int app = fdappend(fd, data, 16);
+        printf("[vfs_full] append data -> %d\n", app);
+        fd_dump(fd);
+
+        int seek0 = fseek(fd, 0, FSEEK_SET);
+        printf("[vfs_full] seek data head -> %d\n", seek0);
+
+        char buf[32];
+        memset(buf, 0, sizeof(buf));
+        int rd = fdread(fd, buf, 16);
+        printf("[vfs_full] read data -> %d, data = %s\n", rd, buf);
+        close(fd);
+    }
+
+    int rm_nonempty = rmdir("/vfsa/sub");
+    printf("[vfs_full] rmdir non-empty /vfsa/sub -> %d\n", rm_nonempty);
+
+    int rf = remove_file("/vfsa/sub/data.txt");
+    printf("[vfs_full] remove data file -> %d\n", rf);
+
+    int rd_sub = rmdir("/vfsa/sub");
+    printf("[vfs_full] rmdir /vfsa/sub -> %d\n", rd_sub);
+
+    int rd_parent = rmdir("/vfsa");
+    printf("[vfs_full] rmdir /vfsa -> %d\n", rd_parent);
+
+    int keep_mk = mkdir("/vfsexport");
+    printf("[vfs_full] mkdir /vfsexport -> %d\n", keep_mk);
+
+    int keep_cf = create_file("/vfsexport/keep.txt", 0);
+    printf("[vfs_full] create /vfsexport/keep.txt -> %d\n", keep_cf);
+
+    int keep_fd = open("/vfsexport/keep.txt", 0);
+    printf("[vfs_full] open keep -> %d\n", keep_fd);
+    if (keep_fd >= 0) {
+        char keep[] = "mkdir rmdir fd_dump ok\n";
+        int keep_app = fdappend(keep_fd, keep, 23);
+        printf("[vfs_full] append keep -> %d\n", keep_app);
+        fd_dump(keep_fd);
+        close(keep_fd);
+    }
+
+    sync();
+    write("[vfs_full] sync done\n");
+    write("[vfs_full] end\n");
+}

@@ -27,6 +27,14 @@ void SystemService::initialize()
     setSystemCall(SYS_CLOSE, (int)syscall_close);
     setSystemCall(SYS_FDREAD, (int)syscall_fdread);
     setSystemCall(SYS_FDWRITE, (int)syscall_fdwrite);
+    setSystemCall(SYS_FDAPPEND, (int)syscall_fdappend);
+    setSystemCall(SYS_CREATE_FILE, (int)syscall_create_file);
+    setSystemCall(SYS_REMOVE_FILE, (int)syscall_remove_file);
+    setSystemCall(SYS_FSEEK, (int)syscall_fseek);
+    setSystemCall(SYS_SYNC, (int)syscall_sync);
+    setSystemCall(SYS_MKDIR, (int)syscall_mkdir);
+    setSystemCall(SYS_RMDIR, (int)syscall_rmdir);
+    setSystemCall(SYS_FD_DUMP, (int)syscall_fd_dump);
     setSystemCall(SYS_MOVE_CURSOR, (int)syscall_move_cursor);
     setSystemCall(SYS_PTE_DUMP, (int)syscall_pte_dump);
     setSystemCall(SYS_PA_DUMP, (int)syscall_pa_dump);
@@ -195,4 +203,36 @@ int syscall_fdread(int fd, void* buf, int size) {
 
 int syscall_fdwrite(int fd, void* buf, int size) {
     return fileManager.write(fd, buf, size);
+}
+
+int syscall_fdappend(int fd, void* buf, int size) {
+    return fileManager.append(fd, buf, size);
+}
+
+int syscall_create_file(const char* path, int flags) {
+    return fileManager.create_file(path, flags);
+}
+
+int syscall_remove_file(const char* path) {
+    return fileManager.remove_file(path);
+}
+
+int syscall_fseek(int fd, int bias, int whence) {
+    return fileManager.fseek(fd, bias, whence);
+}
+
+void syscall_sync() {
+    fileManager.sync_all();
+}
+
+int syscall_mkdir(const char* path) {
+    return fileManager.mkdir(path);
+}
+
+int syscall_rmdir(const char* path) {
+    return fileManager.rmdir(path);
+}
+
+int syscall_fd_dump(int fd) {
+    return fileManager.dump_fd(fd);
 }

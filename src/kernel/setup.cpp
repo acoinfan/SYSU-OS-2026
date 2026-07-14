@@ -308,135 +308,6 @@ void first_thread(void *arg)
 void idle_thread(void *arg)
 {
     kprintf("start idle, pid = 0\n");
-
-    // debug: read write
-
-    // char buf1[512], buf2[512] = "deadbeef";
-    // ASSERT(ide_read_sector(IdeDrive::PrimarySlave, 0, buf1));
-    // kprintf("previous: \n");
-    // kprintf(buf1);
-    // ASSERT(ide_write_sector(IdeDrive::PrimarySlave, 0, buf2));
-    // ASSERT(ide_read_sector(IdeDrive::PrimarySlave, 0, buf1));
-    // kprintf("\nafter: \n");
-    // kprintf(buf1);
-    // end debug
-
-    // debug: fat12_fs read test
-    // FAT12_FS fs;
-    // if (!fs.mount(IdeDrive::PrimarySlave)) {
-    //     kprintf("mount fail\n");
-    // } else
-    //     kprintf("mount done\n");
-
-    // char test[100];
-    // memset(test, 0, 100);
-    // fat12_inode* inode = fs.lookup(nullptr, "test2.txt");
-    // inode->dump();
-    // int res = fs.read(inode, test, 99, 0);
-    // kprintf("read %d bytes\n", res);
-    // kprintf("str = %s, size = %d\n", test, strlen(test));
-
-    // memset(test, 0, 100);
-    // inode = fs.lookup(nullptr, "dir1");
-    // inode->dump();
-    // fat12_inode* inode2 = fs.lookup(inode, "testf");
-    // if (!inode2) {
-    //     kprintf("fail to find\n");
-    // } else {
-    //     inode->dump();
-    //     res = fs.read(inode2, test, 99, 0);
-    //     kprintf("read %d bytes\n", res);
-    //     kprintf("str = %s, size = %d\n", test, strlen(test));
-    // }
-    // end debug
-
-    // debug: fat12_dir_iter
-    // fat12_inode* root = nullptr;
-    // fat12_dir_iter iter;
-    // if (iter.init(&fs, root)) {
-    //     while (iter.next()) {
-    //         fat12_normalized_entry entry = iter.get();
-    //         entry.dump();
-    //     }
-    // }
-
-    // end debug
-
-    // debug: fat12 create/remove file
-
-    // fat12_inode* dir = nullptr;
-    // fs.create_file(dir, "hello.txt", fat12_attr::ARCHIVE);
-    // fs.dump_root_dir();
-
-    // if (!fs.create_file(dir, "hello.txt", fat12_attr::ARCHIVE)) {
-    //     kprintf("file exists\n");
-    // }
-
-    // fat12_inode* file = fs.lookup(dir, "hello.txt");
-    // if (!fs.remove(dir, "hello.txt")) {
-    //     kprintf("file is in use\n");
-    // }
-    // fs.release_inode(file);
-    // fs.remove(dir, "hello.txt");
-    // fs.dump_root_dir();
-
-    // end debug
-
-    // debug: fat12 create-remove directory
-
-    // fat12_inode* target_dir = nullptr;
-    // fs.create_directory(target_dir, "firstdir");
-    // fs.dump_root_dir();
-
-    // if (!fs.create_directory(target_dir, "firstdir")) {
-    //     kprintf("dir exists\n");
-    // }
-
-    // fat12_inode* to_remove = fs.lookup(target_dir, "firstdir");
-    // if (!fs.remove_directory(target_dir, "firstdir")) {
-    //     kprintf("dir is in use\n");
-    // }
-    // if (!fs.remove_directory(target_dir, "dir1")) {
-    //     kprintf("dir1 has some files\n");
-    // }
-    // fs.release_inode(to_remove);
-    // fs.remove_directory(target_dir, "firstdir");
-    // fs.dump_root_dir();
-
-    // end debug
-
-    // debug: fat12 append, write
-
-    // char test1[100];
-    // memset(test1, 0, 100);
-    // fat12_inode* inode11 = fs.lookup(nullptr, "dir1");
-    // inode11->dump();
-    // fat12_inode* inode21 = fs.lookup(inode11, "testf");
-    // if (!inode21) {
-    //     kprintf("fail to find\n");
-    // } else {
-    //     inode21->dump();
-    //     int res = fs.read(inode21, test1, 99, 0);
-    //     kprintf("read %d bytes\n", res);
-    //     kprintf("str = %s, size = %d\n", test1, strlen(test1));
-    // }
-
-    // // 超出长度写
-    // char test2[] = "longlonglonglong";
-    // int res = fs.write(inode21, test2, 10, 0);
-    // res = fs.read(inode21, test1, 99, 0);
-    // kprintf("read %d bytes\n", res);
-    // kprintf("str = %s, size = %d\n", test1, strlen(test1));
-
-    // // append
-    // char test3[] = "append something\n";
-    // res = fs.append(inode21, test3, 10);
-    // res = fs.read(inode21, test1, 99, 0);
-    // kprintf("read %d bytes\n", res);
-    // kprintf("str = %s, size = %d\n", test1, strlen(test1));
-    // inode21->dump();
-
-    // programManager.executeProcess((const char *)init, 0, 1);
     uint32 count = 0;
     // sleep
     // test_fat12_fs();
@@ -446,6 +317,7 @@ void idle_thread(void *arg)
         count++;
         if (count == 100000000)
         {
+            // fileManager.sync_all();
             LOG_TRACE("idling\n");
             count = 0;
         };
@@ -481,17 +353,31 @@ extern "C" void setup_kernel()
     // 文件管理器
     fileManager.initialize(IdeDrive::PrimarySlave, fs_type::FXT12);
     
-    // int testPid = programManager.executeThread(test_file_open_close, nullptr, "file open close test", 1, true);
-    // if (testPid == -1)
+    // int testPid1 = programManager.executeThread(test_file_open_close, nullptr, "file open close test", 1, true);
+    // if (testPid1 == -1)
     // {
     //     kprintf("can not execute file open close test\n");
     //     asm_halt();
     // }
 
-    int testPid2 = programManager.executeThread(test_file_read_write, nullptr, "file read write test", 1, true);
-    if (testPid2 == -1)
+    // int testPid2 = programManager.executeThread(test_file_read_write, nullptr, "file read write test", 1, true);
+    // if (testPid2 == -1)
+    // {
+    //     kprintf("can not execute file read write test\n");
+    //     asm_halt();
+    // }
+
+    // int testPid3 = programManager.executeThread(test_file_append_create_remove_seek, nullptr, "file append create remove seek test", 1, true);
+    // if (testPid3 == -1)
+    // {
+    //     kprintf("can not execute file append create remove seek test\n");
+    //     asm_halt();
+    // }
+
+    int testPid4 = programManager.executeThread(test_vfs_full, nullptr, "vfs full test", 1, true);
+    if (testPid4 == -1)
     {
-        kprintf("can not execute file read write test\n");
+        kprintf("can not execute vfs full test\n");
         asm_halt();
     }
     

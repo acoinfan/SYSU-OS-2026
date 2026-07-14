@@ -65,4 +65,12 @@ int syscall_open(const char* path, int flags);
 int syscall_close(int fd);
 int syscall_fdread(int fd, void* buf, int size);
 int syscall_fdwrite(int fd, void* buf, int size);
+int syscall_fdappend(int fd, void* buf, int size);
+int syscall_create_file(const char* path, int flags);
+int syscall_remove_file(const char* path);
+int syscall_fseek(int fd, int bias, int whence);
+void syscall_sync();
+int syscall_mkdir(const char* path);
+int syscall_rmdir(const char* path);
+int syscall_fd_dump(int fd);
 #endif

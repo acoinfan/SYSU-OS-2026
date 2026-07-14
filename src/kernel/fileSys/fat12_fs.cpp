@@ -756,6 +756,7 @@ int FAT12_FS::write(fat12_inode* node, const void* buf, int size, int offset) {
 int FAT12_FS::append(fat12_inode* node, const void* buf, int size) {
     // 参数检查
     if (!node || node->fat12_fs != this) return -1;
+    if (node->start_cluster != 0 && node->start_cluster < 2) return -1;
     if ((node->attr & fat12_attr::DIRECTORY) || (node->attr & fat12_attr::VOLUME_ID)) return -1;
     if (size <= 0) return 0;
 

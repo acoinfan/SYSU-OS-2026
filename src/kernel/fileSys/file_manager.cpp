@@ -142,6 +142,10 @@ static FAT12_FS* fat12_from_slot(char* fileSystems, int slot) {
     return (FAT12_FS*)(fileSystems + slot * PAGE_SIZE);
 }
 
+static int openfile_index(OpenFile* table, OpenFile* file) {
+    return ((uint32)file - (uint32)table) / sizeof(OpenFile);
+}
+
 void FileManager::initialize(IdeDrive disk, fs_type fs_t) {
     // 清除信息
     memset(this, 0, sizeof(FileManager));
@@ -253,6 +257,36 @@ int FileManager::umount(const char* disk_name) {
 done:
     interruptManager.setInterruptStatus(status);
     return ret;   // 未找到对应disk
+}
+
+void FileManager::sync_all() {
+    kprintf("call sync_all\n");
+    bool status = interruptManager.getInterruptStatus();
+    interruptManager.disableInterrupt();
+
+    if (!dirty) {
+        interruptManager.setInterruptStatus(status);
+        return;
+    }
+
+    for (int i = 0; i < MAX_DISK_COUNT; i++) {
+        if (!fs_table[i].inuse) {
+            continue;
+        }
+
+        switch (fs_table[i].type) {
+            case fs_type::FXT12: {
+                FAT12_FS* fs = fat12_from_slot(fileSystems, i);
+                fs->flush_all();
+                break;
+            }
+            case fs_type::NONE:
+                break;
+        }
+    }
+
+    dirty = false;
+    interruptManager.setInterruptStatus(status);
 }
 
 int FileManager::normalizePath(const char* cwd, const char* path, char* out) {
@@ -377,6 +411,133 @@ OpenFile* FileManager::get_openfile(int idx) {
     return &openfile_table[idx];
 }
 
+static int path_resolve_fs(FileManager* manager, const char* normalized, int* fs_idx, int* subpath_start) {
+    int pos = 1;
+    char component[MAX_PATH_LENGTH];
+
+    *fs_idx = 0;
+    *subpath_start = 1;
+
+    if (!path_is_mnt_prefix(normalized)) {
+        return 0;
+    }
+
+    pos = 5;
+    int component_status = path_next_component(normalized, &pos, component);
+    if (component_status <= 0) {
+        return -1;
+    }
+
+    *fs_idx = -1;
+    for (int i = 1; i < MAX_DISK_COUNT; i++) {
+        if (manager->fs_table[i].inuse && strcmp(manager->fs_table[i].disk_name, component) == 0) {
+            *fs_idx = i;
+            break;
+        }
+    }
+
+    if (*fs_idx == -1) {
+        return -1;
+    }
+
+    while (normalized[pos] == '/') {
+        pos++;
+    }
+    *subpath_start = pos;
+    return 0;
+}
+
+static void release_openfile_node(OpenFile* openfile) {
+    if (!openfile || !openfile->node) {
+        return;
+    }
+
+    switch (openfile->type) {
+        case fs_type::FXT12: {
+            fat12_inode* node = (fat12_inode*)openfile->node;
+            FAT12_FS* fs = (FAT12_FS*)node->fat12_fs;
+            fs->release_inode(node);
+            break;
+        }
+        default:
+            break;
+    }
+}
+
+static bool path_is_fs_root(FileManager* manager, const char* path, int expected_fs_idx) {
+    int fs_idx = 0;
+    int subpath_start = 1;
+
+    if (path_resolve_fs(manager, path, &fs_idx, &subpath_start) != 0) {
+        return false;
+    }
+    if (fs_idx != expected_fs_idx) {
+        return false;
+    }
+    return path[subpath_start] == '\0';
+}
+
+void FileManager::release_lookup_openfile(OpenFile* openfile) {
+    if (!openfile) {
+        return;
+    }
+
+    int idx = openfile_index(openfile_table, openfile);
+    if (idx < 0 || idx >= MAX_OPENFILE_COUNT) {
+        return;
+    }
+
+    if (openfile->refcount <= 0) {
+        release_openfile_node(openfile);
+        release_openfile(idx);
+    }
+}
+
+int FileManager::resolve_parent(const char* path, char* name, int* fs_idx, void** parent_node, OpenFile** parent_file) {
+    char normalized[MAX_PATH_LENGTH];
+    char parent_path[MAX_PATH_LENGTH];
+    int subpath_start = 1;
+
+    if (!path || !name || !fs_idx || !parent_node || !parent_file) {
+        return -1;
+    }
+
+    *fs_idx = 0;
+    *parent_node = nullptr;
+    *parent_file = nullptr;
+
+    if (normalizePath(path, normalized) != 0) {
+        return -1;
+    }
+    if (splitPath(normalized, parent_path, name) != 0) {
+        return -1;
+    }
+    if (path_resolve_fs(this, normalized, fs_idx, &subpath_start) != 0) {
+        return -1;
+    }
+
+    switch (fs_table[*fs_idx].type) {
+        case fs_type::FXT12: {
+            if (path_is_fs_root(this, parent_path, *fs_idx)) {
+                return 0;
+            }
+
+            *parent_file = lookup(parent_path);
+            if (!*parent_file) {
+                return -1;
+            }
+            if ((*parent_file)->type != fs_type::FXT12) {
+                return -1;
+            }
+
+            *parent_node = (*parent_file)->node;
+            return 0;
+        }
+        default:
+            return -1;
+    }
+}
+
 OpenFile* FileManager::lookup(const char* path) {
     char normalized[MAX_PATH_LENGTH];
     char component[MAX_PATH_LENGTH];
@@ -391,28 +552,8 @@ OpenFile* FileManager::lookup(const char* path) {
         return nullptr;
     }
 
-    if (path_is_mnt_prefix(normalized)) {
-        pos = 5;
-        int component_status = path_next_component(normalized, &pos, component);
-        if (component_status <= 0) {
-            return nullptr;
-        }
-
-        fs_idx = -1;
-        for (int i = 1; i < MAX_DISK_COUNT; i++) {
-            if (fs_table[i].inuse && strcmp(fs_table[i].disk_name, component) == 0) {
-                fs_idx = i;
-                break;
-            }
-        }
-
-        if (fs_idx == -1) {
-            return nullptr;
-        }
-
-        while (normalized[pos] == '/') {
-            pos++;
-        }
+    if (path_resolve_fs(this, normalized, &fs_idx, &pos) != 0) {
+        return nullptr;
     }
 
     switch (fs_table[fs_idx].type) {
@@ -529,7 +670,7 @@ int FileManager::open(const char* path, int flags) {
     }
 
     if (fd == -1 && openfile->refcount == 0) {
-        int openfile_idx = ((uint32)openfile - (uint32)openfile_table) / sizeof(OpenFile);
+        int openfile_idx = openfile_index(openfile_table, openfile);
         void* node = openfile->node;
         fs_type type = openfile->type;
         switch (type) {
@@ -573,7 +714,7 @@ int FileManager::close(int fd) {
     openfile->refcount--;
 
     if (openfile->refcount <= 0) {
-        int openfile_idx = ((uint32)openfile - (uint32)openfile_table) / sizeof(OpenFile);
+        int openfile_idx = openfile_index(openfile_table, openfile);
         void* node = openfile->node;
         fs_type type = openfile->type;
 
@@ -592,6 +733,45 @@ int FileManager::close(int fd) {
     }
 
     ret = 0;
+
+done:
+    interruptManager.setInterruptStatus(status);
+    return ret;
+}
+
+int FileManager::dump_fd(int fd) {
+    bool status = interruptManager.getInterruptStatus();
+    interruptManager.disableInterrupt();
+    int ret = -1;
+    PCB* process = programManager.running;
+    File* file = nullptr;
+    OpenFile* openfile = nullptr;
+
+    if (!process || fd < 0 || fd >= MAX_FD_COUNT) {
+        goto done;
+    }
+
+    file = &process->fd_table[fd];
+    openfile = file->openfile;
+    if (!openfile) {
+        goto done;
+    }
+
+    kprintf("[fd_dump] fd=%d offset=%d openfile=0x%x type=%d ref=%d attr=0x%x node=0x%x\n",
+            fd, file->offset, openfile, (int)openfile->type, openfile->refcount, openfile->attr, openfile->node);
+
+    switch (openfile->type) {
+        case fs_type::FXT12: {
+            fat12_inode* node = (fat12_inode*)openfile->node;
+            kprintf("[fd_dump] fat12 size=%d start_cluster=%d parent_cluster=%d attr=0x%x inode_ref=%d\n",
+                    node->size, node->start_cluster, node->parent_dir_start_cluster, node->attr, node->refcount);
+            ret = 0;
+            break;
+        }
+        default:
+            ret = -1;
+            break;
+    }
 
 done:
     interruptManager.setInterruptStatus(status);
@@ -652,6 +832,258 @@ int FileManager::write(int fd, void* buf, int size) {
 
     if (ret > 0) {
         file->offset += ret;
+        dirty = true;
     }
+    return ret;
+}
+
+int FileManager::append(int fd, void* buf, int size) {
+    bool status = interruptManager.getInterruptStatus();
+    interruptManager.disableInterrupt();
+    int ret = -1;
+    PCB* process = programManager.running;
+    File* file = nullptr;
+    OpenFile* openfile = nullptr;
+
+    if (!process || fd < 0 || fd >= MAX_FD_COUNT || !buf || size <= 0) {
+        goto done;
+    }
+
+    file = &process->fd_table[fd];
+    openfile = file->openfile;
+    if (!openfile) {
+        goto done;
+    }
+
+    switch (openfile->type) {
+        case fs_type::FXT12: {
+            fat12_inode* node = (fat12_inode*)openfile->node;
+            FAT12_FS* fs = (FAT12_FS*)node->fat12_fs;
+            ret = fs->append(node, buf, size);
+            if (ret > 0) {
+                file->offset = node->size;
+                dirty = true;
+            }
+            break;
+        }
+        default:
+            ret = -1;
+            break;
+    }
+
+done:
+    interruptManager.setInterruptStatus(status);
+    return ret;
+}
+
+int FileManager::fseek(int fd, int bias, int whence) {
+    bool status = interruptManager.getInterruptStatus();
+    interruptManager.disableInterrupt();
+    int ret = -1;
+    PCB* process = programManager.running;
+    File* file = nullptr;
+    OpenFile* openfile = nullptr;
+    int base = 0;
+    int file_size = 0;
+    int next_offset = 0;
+
+    if (!process || fd < 0 || fd >= MAX_FD_COUNT) {
+        goto done;
+    }
+
+    file = &process->fd_table[fd];
+    openfile = file->openfile;
+    if (!openfile) {
+        goto done;
+    }
+
+    switch (openfile->type) {
+        case fs_type::FXT12:
+            file_size = ((fat12_inode*)openfile->node)->size;
+            break;
+        default:
+            goto done;
+    }
+
+    switch (whence) {
+        case 0:
+            base = 0;
+            break;
+        case 1:
+            base = file->offset;
+            break;
+        case 2:
+            base = file_size;
+            break;
+        default:
+            goto done;
+    }
+
+    next_offset = base + bias;
+    if (next_offset < 0 || next_offset > file_size) {
+        goto done;
+    }
+
+    file->offset = next_offset;
+    ret = next_offset;
+
+done:
+    interruptManager.setInterruptStatus(status);
+    return ret;
+}
+
+int FileManager::create_file(const char* path, int flags) {
+    bool status = interruptManager.getInterruptStatus();
+    interruptManager.disableInterrupt();
+    int ret = -1;
+    char name[MAX_PATH_LENGTH];
+    int fs_idx = 0;
+    void* parent_node_raw = nullptr;
+    OpenFile* parent_file = nullptr;
+
+    if (resolve_parent(path, name, &fs_idx, &parent_node_raw, &parent_file) != 0) {
+        goto done;
+    }
+
+    switch (fs_table[fs_idx].type) {
+        case fs_type::FXT12: {
+            FAT12_FS* fs = fat12_from_slot(fileSystems, fs_idx);
+            fat12_inode* parent_node = (fat12_inode*)parent_node_raw;
+            if (parent_node && (parent_node->fat12_fs != fs || !(parent_node->attr & fat12_attr::DIRECTORY))) {
+                goto done;
+            }
+            ret = fs->create_file(parent_node, name, fat12_attr::ARCHIVE) ? 0 : -1;
+            if (ret == 0) {
+                dirty = true;
+            }
+            break;
+        }
+        default:
+            ret = -1;
+            break;
+    }
+
+done:
+    release_lookup_openfile(parent_file);
+    interruptManager.setInterruptStatus(status);
+    return ret;
+}
+
+int FileManager::remove_file(const char* path) {
+    bool status = interruptManager.getInterruptStatus();
+    interruptManager.disableInterrupt();
+    int ret = -1;
+    char name[MAX_PATH_LENGTH];
+    int fs_idx = 0;
+    void* parent_node_raw = nullptr;
+    OpenFile* parent_file = nullptr;
+
+    if (resolve_parent(path, name, &fs_idx, &parent_node_raw, &parent_file) != 0) {
+        goto done;
+    }
+
+    switch (fs_table[fs_idx].type) {
+        case fs_type::FXT12: {
+            FAT12_FS* fs = fat12_from_slot(fileSystems, fs_idx);
+            fat12_inode* parent_node = (fat12_inode*)parent_node_raw;
+            if (parent_node && (parent_node->fat12_fs != fs || !(parent_node->attr & fat12_attr::DIRECTORY))) {
+                goto done;
+            }
+            ret = fs->remove(parent_node, name) ? 0 : -1;
+            if (ret == 0) {
+                dirty = true;
+            }
+            break;
+        }
+        default:
+            ret = -1;
+            break;
+    }
+
+done:
+    release_lookup_openfile(parent_file);
+    interruptManager.setInterruptStatus(status);
+    return ret;
+}
+
+int FileManager::create(const char* path, int flags) {
+    return create_file(path, flags);
+}
+
+int FileManager::remove(const char* path) {
+    return remove_file(path);
+}
+
+int FileManager::mkdir(const char* path) {
+    bool status = interruptManager.getInterruptStatus();
+    interruptManager.disableInterrupt();
+    int ret = -1;
+    char name[MAX_PATH_LENGTH];
+    int fs_idx = 0;
+    void* parent_node_raw = nullptr;
+    OpenFile* parent_file = nullptr;
+
+    if (resolve_parent(path, name, &fs_idx, &parent_node_raw, &parent_file) != 0) {
+        goto done;
+    }
+
+    switch (fs_table[fs_idx].type) {
+        case fs_type::FXT12: {
+            FAT12_FS* fs = fat12_from_slot(fileSystems, fs_idx);
+            fat12_inode* parent_node = (fat12_inode*)parent_node_raw;
+            if (parent_node && (parent_node->fat12_fs != fs || !(parent_node->attr & fat12_attr::DIRECTORY))) {
+                goto done;
+            }
+            ret = fs->create_directory(parent_node, name) ? 0 : -1;
+            if (ret == 0) {
+                dirty = true;
+            }
+            break;
+        }
+        default:
+            ret = -1;
+            break;
+    }
+
+done:
+    release_lookup_openfile(parent_file);
+    interruptManager.setInterruptStatus(status);
+    return ret;
+}
+
+int FileManager::rmdir(const char* path) {
+    bool status = interruptManager.getInterruptStatus();
+    interruptManager.disableInterrupt();
+    int ret = -1;
+    char name[MAX_PATH_LENGTH];
+    int fs_idx = 0;
+    void* parent_node_raw = nullptr;
+    OpenFile* parent_file = nullptr;
+
+    if (resolve_parent(path, name, &fs_idx, &parent_node_raw, &parent_file) != 0) {
+        goto done;
+    }
+
+    switch (fs_table[fs_idx].type) {
+        case fs_type::FXT12: {
+            FAT12_FS* fs = fat12_from_slot(fileSystems, fs_idx);
+            fat12_inode* parent_node = (fat12_inode*)parent_node_raw;
+            if (parent_node && (parent_node->fat12_fs != fs || !(parent_node->attr & fat12_attr::DIRECTORY))) {
+                goto done;
+            }
+            ret = fs->remove_directory(parent_node, name) ? 0 : -1;
+            if (ret == 0) {
+                dirty = true;
+            }
+            break;
+        }
+        default:
+            ret = -1;
+            break;
+    }
+
+done:
+    release_lookup_openfile(parent_file);
+    interruptManager.setInterruptStatus(status);
     return ret;
 }

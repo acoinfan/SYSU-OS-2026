@@ -36,19 +36,26 @@ public:
     char fileSystems[PAGE_SIZE * MAX_DISK_COUNT];
 
     int total_mount_disk;
+    bool dirty;
     
     void initialize(IdeDrive disk, fs_type fs_t);
     int open(const char* path, int flags);
     int read(int fd, void* buf, int size);
     int write(int fd, void* buf, int size);
+    int append(int fd, void* buf, int size);
+    int fseek(int fd, int bias, int whence);
     int close(int fd);
+    int dump_fd(int fd);
 
     // 将IdeDrive disk挂载到/mount/disk_name
     // return 0 if success
     int mount(const char* disk_name, IdeDrive disk, fs_type fs_t);
     int umount(const char* disk_name);
+    void sync_all();
 
     OpenFile* lookup(const char* path);
+    int create_file(const char* path, int flags);
+    int remove_file(const char* path);
     int create(const char* path, int flags);
     int remove(const char* path);
 
@@ -66,6 +73,8 @@ private:
     int allocate_openfile();
     void release_openfile(int idx);
     OpenFile* get_openfile(int idx);
+    void release_lookup_openfile(OpenFile* openfile);
+    int resolve_parent(const char* path, char* name, int* fs_idx, void** parent_node, OpenFile** parent_file);
     // File* lookup(const char* path);
 
 };
