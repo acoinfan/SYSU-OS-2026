@@ -272,18 +272,26 @@ int FAT12_FS::find_cache(uint16 cluster) {
 }
 
 fat12_cluster_buffer* FAT12_FS::get_cache(uint16 cluster) {
+    bool status = interruptManager.getInterruptStatus();
+    interruptManager.disableInterrupt();
     // 不允许读取非法簇
-    if (cluster < 2 || cluster >= 0xFF0) return nullptr;
+    if (cluster < 2 || cluster >= 0xFF0) {
+        interruptManager.setInterruptStatus(status);
+        return nullptr;
+    }
+
     int idx = find_cache(cluster);
 
     // cache中找到
     if (idx != -1) {
+        cache_pool[idx].refcount++;
+        interruptManager.setInterruptStatus(status);
         return &cache_pool[idx];
     }
 
     // 未在cache中, 尝试找到一个空的(ref = 0)
-    int victim = 0;
-    uint32 last_access_time = 0xFFFFFFFF;
+    // int victim = 0;
+    // uint32 last_access_time = 0xFFFFFFFF;
     for (int i = 0; i < FAT12_MAX_CACHE; i++) {
         if (cache_pool[i].refcount == 0) {
             cache_pool[i].cluster_num = cluster;
@@ -294,34 +302,54 @@ fat12_cluster_buffer* FAT12_FS::get_cache(uint16 cluster) {
             if (!cache_pool[i].read_cluster(this)) {
                 PANIC("FAT12_fs: read cluster %u failed\n", cluster);
             }
+            interruptManager.setInterruptStatus(status);
             return &cache_pool[i];
         } 
-        if (cache_pool[i].last_used_time < last_access_time) {
-            victim = i;
-        }
+        // if (cache_pool[i].last_used_time < last_access_time) {
+        //     victim = i;
+        // }
     }
 
     // flush victim 到磁盘
-    if (cache_pool[victim].dirty) {
-        if (!cache_pool[victim].write_cluster(this)) {
-            PANIC("FAT12_sys: inconsistent write_cluster in cluster %d\n", cache_pool[victim].cluster_num);
-        }
-    }
+    // if (cache_pool[victim].dirty) {
+    //     if (!cache_pool[victim].write_cluster(this)) {
+    //         PANIC("FAT12_sys: inconsistent write_cluster in cluster %d\n", cache_pool[victim].cluster_num);
+    //     }
+    // }
 
     // 更新cache_pool信息
-    cache_pool[victim].cluster_num = cluster;
-    cache_pool[victim].refcount = 1;
-    cache_pool[victim].dirty = false;
-    cache_pool[victim].last_used_time = this->access_time;
+    // cache_pool[victim].cluster_num = cluster;
+    // cache_pool[victim].refcount = 1;
+    // cache_pool[victim].dirty = false;
+    // cache_pool[victim].last_used_time = this->access_time;
 
     // 读取
-    if (!cache_pool[victim].read_cluster(this)) {
-        PANIC("FAT12_sys: inconsistent read_cluster in cluster %d\n", cache_pool[victim].cluster_num);
-    }
-
-    return &cache_pool[victim];
+    // if (!cache_pool[victim].read_cluster(this)) {
+    //     PANIC("FAT12_sys: inconsistent read_cluster in cluster %d\n", cache_pool[victim].cluster_num);
+    // }
+    interruptManager.setInterruptStatus(status);
+    return nullptr;
 }
 
+void FAT12_FS::release_cache(fat12_cluster_buffer* buf) {
+    bool status = interruptManager.getInterruptStatus();
+    interruptManager.disableInterrupt();
+
+    if (buf->refcount <= 0) {
+        interruptManager.setInterruptStatus(status);
+        return;
+    }
+
+    buf->refcount--;
+    if (buf->refcount <= 0 && buf->dirty) {
+        if (!buf->write_cluster(this)) {
+            PANIC("FAT12_sys: inconsistent write_cluster in cluster %d\n", buf->cluster_num);
+        }
+        buf->dirty = false;
+    }
+    interruptManager.setInterruptStatus(status);
+    return;
+}
 
 uint16 FAT12_FS::allocate_cluster() {
     for (uint16 idx = 2; idx < cluster_count; idx++) {
@@ -404,6 +432,7 @@ fat12_inode* FAT12_FS::lookup_threadunsafe(fat12_inode* dir, const char* name) {
         // 遍历有效簇
         while (cnt_cluster >= 0x2 && cnt_cluster <= 0xFF7) {
             fat12_cluster_buffer* cache = get_cache(cnt_cluster);
+            if (!cache) return nullptr;
             uint16 total_entries = cluster_size / FAT12_ENTRY_BYTES;
             entry_buf.reset();
             for (uint16 i = 0; i < total_entries; i++) {
@@ -429,6 +458,7 @@ fat12_inode* FAT12_FS::lookup_threadunsafe(fat12_inode* dir, const char* name) {
                             res = inodepool.allocate();
                             if (!res) {
                                 kprintf("inode Pool is Full\n");
+                                release_cache(cache);
                                 return nullptr;
                             }
                             res->attr = entry->attr;
@@ -444,13 +474,16 @@ fat12_inode* FAT12_FS::lookup_threadunsafe(fat12_inode* dir, const char* name) {
                         res->location.is_root = false;
                         res->location.parent_cluster = dir->start_cluster;
                         res->location.root_index = 0;
+                        release_cache(cache);
                         return res;
                     }
                 } else if (entry_buf.status == fat12_entry_buf::fat12_entry_buf_status::END_OF_DIR){
+                    release_cache(cache);
                     return nullptr;
                 }
 
             }
+            release_cache(cache);
             cnt_cluster = fat_table[cnt_cluster];
         }
         return nullptr;
@@ -629,6 +662,7 @@ int FAT12_FS::read(fat12_inode* node, void* buf, int size, int offset) {
     if (size < left) {
         memcpy(buf, &cluster_buf->buf[offset], size);
         read_size += size;
+        release_cache(cluster_buf);
         return read_size;
     } else {
         memcpy(buf, &cluster_buf->buf[offset], left);
@@ -636,6 +670,7 @@ int FAT12_FS::read(fat12_inode* node, void* buf, int size, int offset) {
         read_size += left;
     }
 
+    release_cache(cluster_buf);
     cnt_cluster = fat_table[cnt_cluster];
 
     // 连cluster读
@@ -646,6 +681,7 @@ int FAT12_FS::read(fat12_inode* node, void* buf, int size, int offset) {
         memcpy((char*)buf + read_size, cluster_buf->buf, chunk);
         size -= chunk;
         read_size += chunk;
+        release_cache(cluster_buf);
         cnt_cluster = fat_table[cnt_cluster];
     }
     return read_size;
@@ -690,6 +726,7 @@ int FAT12_FS::write(fat12_inode* node, const void* buf, int size, int offset) {
         memcpy(&cluster_buf->buf[offset], buf, size);
         cluster_buf->dirty = true;
         write_size += size;
+        release_cache(cluster_buf);
         return write_size;
     } else {
         memcpy(&cluster_buf->buf[offset], buf, left);
@@ -697,7 +734,8 @@ int FAT12_FS::write(fat12_inode* node, const void* buf, int size, int offset) {
         size -= left;
         write_size += left;
     }
-
+    
+    release_cache(cluster_buf); 
     cnt_cluster = fat_table[cnt_cluster];
 
     // 连cluster写
@@ -709,6 +747,7 @@ int FAT12_FS::write(fat12_inode* node, const void* buf, int size, int offset) {
         cluster_buf->dirty = true;
         size -= chunk;
         write_size += chunk;
+        release_cache(cluster_buf); 
         cnt_cluster = fat_table[cnt_cluster];
     }
     return write_size;
@@ -752,7 +791,7 @@ int FAT12_FS::append(fat12_inode* node, const void* buf, int size) {
 
     if (used < (int)cluster_size) {
         fat12_cluster_buffer* cache = get_cache(cluster);
-
+        if (!cache) PANIC("Fail to get_cache, Inconsistent append");
         int chunk = min(size, (int)cluster_size - used);
         memcpy(cache->buf + used, src, chunk);
         cache->dirty = true;
@@ -765,6 +804,7 @@ int FAT12_FS::append(fat12_inode* node, const void* buf, int size) {
         appended += chunk;
         src += chunk;
         size -= chunk;
+        release_cache(cache); 
     }
 
     // 后续不足的部分继续分配新簇写入
@@ -788,7 +828,7 @@ int FAT12_FS::append(fat12_inode* node, const void* buf, int size) {
 
         // 写入
         fat12_cluster_buffer* cache = get_cache(new_cluster);
-
+        if (!cache) PANIC("Fail to get_cache in append, inconsistent state!");
         // 新簇先清零，避免未写满部分是脏数据
         memset(cache->buf, 0, cluster_size);
 
@@ -799,9 +839,11 @@ int FAT12_FS::append(fat12_inode* node, const void* buf, int size) {
         // 立刻写回这个新簇, 若失败则直接进入file_size更新
         if (!cache->write_cluster(this)) {
             appended += chunk;
+            release_cache(cache); 
             break;
         }
 
+        release_cache(cache); 
         appended += chunk;
         src += chunk;
         size -= chunk;
@@ -821,6 +863,7 @@ int FAT12_FS::append(fat12_inode* node, const void* buf, int size) {
             root_dir_dirty = true;
         } else {
             fat12_cluster_buffer* parent_cache = get_cache(node->location.current_cluster);
+            if (!parent_cache) PANIC("Fail to get_cache in FAT12_FS::append");
             fat12_entry_buf entry_buf;
             entry_buf.reset();
             if (entry_buf.read(parent_cache->buf + node->location.entry_index_in_cluster * FAT12_ENTRY_BYTES)) {
@@ -833,6 +876,7 @@ int FAT12_FS::append(fat12_inode* node, const void* buf, int size) {
             } else {
                 PANIC("Fail to update file size in FAT12_FS::append");
             }
+            release_cache(parent_cache); 
         }
     }
 
@@ -869,6 +913,7 @@ bool FAT12_FS::find_dir_entry(fat12_inode* target, fat12_entry_location* locatio
         // 遍历有效簇
         while (cnt_cluster >= 0x2 && cnt_cluster <= 0xFF7) {
             fat12_cluster_buffer* cache = get_cache(cnt_cluster);
+            if (!cache) return false;
             uint16 total_entries = cluster_size / FAT12_ENTRY_BYTES;
             entry_buf.reset();
             for (uint16 i = 0; i < total_entries; i++) {
@@ -879,13 +924,16 @@ bool FAT12_FS::find_dir_entry(fat12_inode* target, fat12_entry_location* locatio
                         location->is_root = false;
                         location->parent_cluster = target->parent_dir_start_cluster;
                         location->root_index = 0;
+                        release_cache(cache);
                         return true;
                     }
                 } else if (entry_buf.status == fat12_entry_buf::fat12_entry_buf_status::END_OF_DIR){
+                    release_cache(cache);
                     return false;
                 }
 
             }
+            release_cache(cache);
             cnt_cluster = fat_table[cnt_cluster];
         }
         return false;
@@ -919,6 +967,7 @@ int FAT12_FS::find_free_entry(fat12_inode* dir, fat12_entry_location* location) 
         // 遍历有效簇
         while (cnt_cluster >= 0x2 && cnt_cluster <= 0xFF7) {
             fat12_cluster_buffer* cache = get_cache(cnt_cluster);
+            if (!cache) return -1;
             uint16 total_entries = cluster_size / FAT12_ENTRY_BYTES;
             entry_buf.reset();
             for (uint16 i = 0; i < total_entries; i++) {
@@ -931,10 +980,12 @@ int FAT12_FS::find_free_entry(fat12_inode* dir, fat12_entry_location* location) 
                         location->is_root = false;
                         location->parent_cluster = dir->start_cluster;
                         location->root_index = 0;
+                        release_cache(cache);
                         return 0;
                     }
                 }
             }
+            release_cache(cache);
             prev_cluster = cnt_cluster;
             cnt_cluster = fat_table[cnt_cluster];
         }
@@ -954,12 +1005,15 @@ bool FAT12_FS::write_dir_entry(const fat12_entry_location& location, const fat12
         if (location.entry_index_in_cluster >= cluster_size / FAT12_ENTRY_BYTES) return false;
         if (location.current_cluster < 2 || location.current_cluster > 0xFF7) return false; 
         fat12_cluster_buffer* cache = get_cache(location.current_cluster);
+        if (!cache) return false;
         fat12_entry_buf buf;
         buf.normalized_entry.copy(entry);
         if (!buf.write(cache->buf + location.entry_index_in_cluster * sizeof(fat12_sfn_entry), false)) {
+            release_cache(cache);
             return false;
         }
         cache->dirty = true;
+        release_cache(cache);
     }
     return true;
 }
@@ -974,11 +1028,14 @@ bool FAT12_FS::delete_dir_entry(const fat12_entry_location& location) {
         if (location.entry_index_in_cluster >= cluster_size / FAT12_ENTRY_BYTES) return false;
         if (location.current_cluster < 2 || location.current_cluster > 0xFF7) return false; 
         fat12_cluster_buffer* cache = get_cache(location.current_cluster);
+        if (!cache) return false;
         fat12_entry_buf buf;
         if (!buf.write(cache->buf + location.entry_index_in_cluster * sizeof(fat12_sfn_entry), true)) {
+            release_cache(cache);
             return false;
         }
         cache->dirty = true;        
+        release_cache(cache);
     }
     return true;
 }
@@ -1013,8 +1070,14 @@ bool FAT12_FS::create_file(fat12_inode* dir, const char* name, uint8 attr) {
             
             // 清空新簇
             fat12_cluster_buffer* cache = get_cache(new_cluster);
+            if (!cache) {
+                free_cluster(new_cluster);
+                return false;
+            }
+
             memset(cache->buf, 0, cluster_size);
             cache->dirty = true;
+            release_cache(cache);
 
             // 统一把信息写入location
             location.current_cluster = new_cluster;
@@ -1110,8 +1173,14 @@ bool FAT12_FS::create_directory(fat12_inode* dir, const char* name) {
             
             // 清空新簇
             fat12_cluster_buffer* cache = get_cache(new_cluster);
+            if (!cache) {
+                free_cluster(new_cluster);
+                return false;
+            }
+
             memset(cache->buf, 0, cluster_size);
             cache->dirty = true;
+            release_cache(cache);
 
             // 统一把信息写入location
             location.current_cluster = new_cluster;
@@ -1161,8 +1230,11 @@ bool FAT12_FS::create_directory(fat12_inode* dir, const char* name) {
 
     // 清空对应cluster
     fat12_cluster_buffer* dir_cache = get_cache(start_cluster);
+    if (!dir_cache) PANIC("create_directory: Inconsistent get_cache");
+
     memset(dir_cache->buf, 0, cluster_size);
     dir_cache->dirty = true;
+    release_cache(dir_cache);
 
     return true;
 }
@@ -1278,6 +1350,7 @@ void FAT12_FS::flush(fat12_inode* node) {
         root_dir_dirty = true;
     } else {
         fat12_cluster_buffer* parent_cache = get_cache(node->location.current_cluster);
+        if (!parent_cache) PANIC("Fail to get_cache in FAT12_FS::flush");   
         fat12_entry_buf entry_buf;
         entry_buf.reset();
         if (entry_buf.read(parent_cache->buf + node->location.entry_index_in_cluster * FAT12_ENTRY_BYTES)) {
@@ -1290,6 +1363,7 @@ void FAT12_FS::flush(fat12_inode* node) {
         } else {
             PANIC("Fail to update file size in FAT12_FS::flush");
         }
+        release_cache(parent_cache);
     }   
 
     // 恢复中断

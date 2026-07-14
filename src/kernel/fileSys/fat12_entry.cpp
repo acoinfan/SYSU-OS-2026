@@ -194,15 +194,17 @@ bool fat12_dir_iter::next() {
                 }
 
                 count++;
+                fs->release_cache(cache);
                 return true;
             } else {
                 if (current.status == fat12_entry_buf::END_OF_DIR) {
+                    fs->release_cache(cache);
                     return false;
                 }
                 // DELETE / SKIP_LFN / SKIP_SFN 都继续扫
             }
         }
-
+        fs->release_cache(cache);
         current_cluster = fs->fat_table[current_cluster];
         entry_index_in_cluster = 0;
     }

@@ -112,7 +112,7 @@ public:
     int is_dir_empty(fat12_inode* dir);
     
 private:
-    fat12_inode* FAT12_FS::lookup_threadunsafe(fat12_inode* dir, const char* name);
+    fat12_inode* lookup_threadunsafe(fat12_inode* dir, const char* name);
     // root表管理
     bool init_root_dir();
     bool destroy_root_dir();
@@ -123,8 +123,11 @@ private:
     // 未找到则返回-1
     int find_cache(uint16 cluster);
 
-    // 一定会返回一个可读写的buffer
+    // 返回一个可读写的buffer, 失败则Nullptr
     fat12_cluster_buffer* get_cache(uint16 cluster);
+
+    // 释放一个buffer指针
+    void release_cache(fat12_cluster_buffer* buf);
 
     // flush cluster:
     bool flush_cache(uint16 cluster);
@@ -138,7 +141,7 @@ private:
     // 非法target和找不到返回false, 找到返回true
     bool find_dir_entry(fat12_inode* target, fat12_entry_location* location);
     // 包括已删除, 空条目
-    // 非法target返回-1, 找到返回0, 需要扩容处理返回1, 如果是root无法扩容返回2
+    // 非法target或cluster读取失败返回-1, 找到返回0, 需要扩容处理返回1, 如果是root无法扩容返回2
     int find_free_entry(fat12_inode* dir, fat12_entry_location* location);
 
     bool write_dir_entry(const fat12_entry_location& location,
