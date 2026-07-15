@@ -7,6 +7,11 @@ ELF_TARGETS := $(patsubst %.cpp,$(RUNDIR)/root/bin/%,$(CPP_SRCS))
 .PHONY: all clean
 
 all: $(ELF_TARGETS)
+	@for file in $(RUNDIR)/root/bin/*; do \
+		if [ -f "$$file" ] && [ ! -f "$(CURDIR)/$$(basename "$$file").cpp" ]; then \
+			rm -f "$$file"; \
+		fi; \
+	done
 
 $(OBJDIR)/bin/%.o: %.cpp
 	@mkdir -p $(dir $@)

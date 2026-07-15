@@ -12,50 +12,6 @@ void test_print_something(void* arg) {
     write("Hello from 2026/6/9\n");
 }
 
-// void test_out_of_memory(void* arg) {
-//     write("Out Of Memory Begin\n");
-//     interruptManager.disableTimeInterrupt();
-//     char* p0 = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, 1, VP_RW);
-//     char* p1 = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, 1, VP_RW);
-
-//     // OK
-//     *p0 = 0;
-//     write("Part 1 OK\n");
-//     // FAIL
-//     *p1 = 0;
-//     write("Never Reach Here if Kernel PA = 1\n");
-//     return;
-// }
-// void test_lazy_alloc_thread(void* arg) {
-//     write("Lazy Alloc Begin\n");
-//     interruptManager.disableTimeInterrupt();
-//     char* p0 = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, 1, VP_RW);
-//     // LAZY ALLOC RELEASE
-//     memoryManager.releasePages(AddressPoolType::KERNEL, (int)p0, 1);
-
-//     // LAZY ALLOC TEST
-//     p0 = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, 1, VP_RW);
-//     *p0 = 0;
-    
-//     // LAZY_ALLOC & FIND_VICTIM
-//     char* testp = (char *)memoryManager.allocatePagesLazy(AddressPoolType::KERNEL, 1, VP_RW);
-//     *testp = 0;
-
-//     // VICTIM_RELEASE
-//     memoryManager.releasePages(AddressPoolType::KERNEL, (int)p0, 1);
-//     // LAZY ALLOC RELEASE
-//     memoryManager.releasePages(AddressPoolType::KERNEL, (int)testp, 1);
-//     write("Lazy Alloc Done\n");
-//     interruptManager.enableTimeInterrupt();
-
-//     int pid = programManager.executeThread(test_out_of_memory, nullptr, "test_out_of_memory", 1, true);
-//     if (pid == -1)
-//     {
-//         write("can not execute thread\n");
-//         asm_halt();
-//     }
-//     return;
-// }
 
 void COW_writer() {
     volatile char* p = (char*)USER_VADDR_START;
@@ -480,3 +436,4 @@ void test_fd_fork_process() {
     write("[fork_fd] end\n");
     exit(0);
 }
+

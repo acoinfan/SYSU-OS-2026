@@ -1,5 +1,5 @@
 include config.mk
-.PHONY: all build kernel user bin clean run debug gdb test libs export export-root export-test export-log boot-pre bootloader
+.PHONY: all build kernel test bin clean run debug gdb libs export export-root export-test export-log boot-pre bootloader
 
 all: build
 
@@ -25,15 +25,15 @@ kernel: libs builtin boot-pre
 	$(MAKE) -C ../src/kernel
 	@echo "kernel objects ready"
 
-user: libs
-	$(MAKE) -C ../src/user
-	@echo "user elfs ready"
+test: libs
+	$(MAKE) -C ../src/test
+	@echo "test elfs ready"
 
 bin: libs
 	$(MAKE) -C ../src/bin
 	@echo "bin elfs ready"
 
-image: bootloader user bin
+image: bootloader test bin
 	dd if=$(OBJDIR)/boot/mbr.bin of=$(RUNDIR)/hd.img bs=512 count=1 seek=0 conv=notrunc
 	dd if=$(OBJDIR)/boot/bootloader.bin of=$(RUNDIR)/hd.img bs=512 count=5 seek=1 conv=notrunc
 	@KERNEL_SECTORS=$$((($$(wc -c < $(OBJDIR)/boot/kernel.bin) + 511) / 512)); \
@@ -66,6 +66,7 @@ image: bootloader user bin
 clean:
 	$(MAKE) -C ../src/libc clean
 	$(MAKE) -C ../src/builtin clean
+	$(MAKE) -C ../src/test clean
 	$(MAKE) -C ../src/bin clean
 	$(MAKE) -C ../src/boot clean
 	$(MAKE) -C ../src/kernel clean

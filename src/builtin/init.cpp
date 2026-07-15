@@ -1,7 +1,6 @@
 #include "init.h"
 #include "test.h"
 #include "syscall.h"
-#include "malloctest.h"
 
 void init(void* arg) {
     write("start init, pid = 1\n");
@@ -17,19 +16,19 @@ void init(void* arg) {
     //     return;
     // }
     // if (fork() == 0) {
-    //     execve("/elf_test");
+    //     execve("/mnt/test/elf_test");
     //     return;
     // }
     // if (fork() == 0) {
-    //     execve("/elf_test");
+    //     execve("/mnt/test/elf_test");
     //     return;
     // }
     // if (fork() == 0) {
-    //     execve("/elf_test");
+    //     execve("/mnt/test/elf_test");
     //     return;
     // }
     // if (fork() == 0) {
-    //     execve("/complex");
+    //     execve("/mnt/test/complex");
     //     return;
     // }
     if (fork() == 0) {

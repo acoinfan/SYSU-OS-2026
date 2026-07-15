@@ -2,8 +2,6 @@
 #define TEST_H
 
 void test_print_something(void* arg);
-// void test_out_of_memory(void* arg);
-// void test_lazy_alloc_thread(void* arg);
 void COW_writer();
 void COW_reader();
 void fork_test();
@@ -13,5 +11,4 @@ void test_file_read_write(void* arg);
 void test_file_append_create_remove_seek(void* arg);
 void test_vfs_full(void* arg);
 void test_fd_fork_process();
-void init_process(void* arg);
 #endif

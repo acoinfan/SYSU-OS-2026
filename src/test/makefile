@@ -1,21 +1,26 @@
 include ../../build/config.mk
 
 CPP_SRCS := $(wildcard *.cpp)
-CPP_OBJS := $(patsubst %.cpp,$(OBJDIR)/user/%.o,$(CPP_SRCS))
+CPP_OBJS := $(patsubst %.cpp,$(OBJDIR)/test/%.o,$(CPP_SRCS))
 ELF_TARGETS := $(patsubst %.cpp,$(RUNDIR)/test/%,$(CPP_SRCS))
 
 .PHONY: all clean
 
 all: $(ELF_TARGETS)
+	@for file in $(RUNDIR)/test/*; do \
+		if [ -f "$$file" ] && [ ! -f "$(CURDIR)/$$(basename "$$file").cpp" ]; then \
+			rm -f "$$file"; \
+		fi; \
+	done
 
-$(OBJDIR)/user/%.o: %.cpp
+$(OBJDIR)/test/%.o: %.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXX_FLAGS) $(USER_INCLUDE) -c $< -o $@
 
-$(RUNDIR)/test/%: $(OBJDIR)/user/%.o $(LIBC_LIB)
+$(RUNDIR)/test/%: $(OBJDIR)/test/%.o $(LIBC_LIB)
 	@mkdir -p $(dir $@)
 	$(LINKER) -melf_i386 -N -Ttext 0x08048000 -e _start -o $@ $< $(LIBC_LIB)
 
 clean:
-	rm -rf $(OBJDIR)/user
+	rm -rf $(OBJDIR)/test
 	rm -f $(ELF_TARGETS)
