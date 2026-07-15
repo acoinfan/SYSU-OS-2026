@@ -90,11 +90,15 @@ bool fat12_entry_buf::write(void* fat12_entry, bool setDelete) {
             if (this->normalized_entry.name[i] == '.') dot_idx = i;
         }
 
-        for (int i = 0; i < 8 && i < dot_idx; i++) {
-            entry->name[i] = to_upper(this->normalized_entry.name[i]);
-        }
         // 没有找到. 视为无后缀名文件
-        if (dot_idx != -1) {
+        if (dot_idx == -1) {
+            for (int i = 0; i < 8 && this->normalized_entry.name[i]; i++) {
+                entry->name[i] = to_upper(this->normalized_entry.name[i]);
+            }
+        } else {
+            for (int i = 0; i < 8 && i < dot_idx; i++) {
+                entry->name[i] = to_upper(this->normalized_entry.name[i]);
+            }
             for (int i = 0; i < 3 && this->normalized_entry.name[i + dot_idx + 1]; i++) {
                 entry->ext[i] = to_upper(this->normalized_entry.name[i + dot_idx + 1]);
             }

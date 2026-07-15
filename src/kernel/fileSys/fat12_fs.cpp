@@ -556,7 +556,9 @@ bool FAT12_FS::flush_root_dir() {
             if (entry_idx < root_entries) {
                 entry_buf.normalized_entry.copy(root_dir[entry_idx]);
                 // 是否已删除条目
-                if ((uint8)root_dir[entry_idx].name[0] == 0xE5) {
+                if (root_dir[entry_idx].name[0] == '\0') {
+                    // tmp_sector_buffer 已经清零，0x00 表示目录到此结束。
+                } else if ((uint8)root_dir[entry_idx].name[0] == 0xE5) {
                     res &= entry_buf.write(tmp_sector_buffer + FAT12_ENTRY_BYTES * i, true);
                 } else {
                     res &= entry_buf.write(tmp_sector_buffer + FAT12_ENTRY_BYTES * i, false);

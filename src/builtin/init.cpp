@@ -28,8 +28,12 @@ void init(void* arg) {
     //     execve("/elf_test");
     //     return;
     // }
+    // if (fork() == 0) {
+    //     execve("/complex");
+    //     return;
+    // }
     if (fork() == 0) {
-        execve("/complex");
+        execve("/kbdtest");
         return;
     }
     while (true)
