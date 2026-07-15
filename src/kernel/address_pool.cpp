@@ -393,6 +393,10 @@ bool UserVAddressPool::cloneFrom(const UserVAddressPool& parent, uint32 owner) {
 }
 
 void UserVAddressPool::destroy() {
+    if (!this->isInitialized) {
+        return;
+    }
+
     if (programManager.running->pid == owner) {
         memoryManager.releasePages(AddressPoolType::KERNEL, bitmapStart, bitmapPage);
         memoryManager.releasePages(AddressPoolType::KERNEL, privStart, privPage);
@@ -411,7 +415,15 @@ void UserVAddressPool::destroy() {
             memoryManager.rmapManager.detach(&memoryManager.pageinfos[PA2PGI(paddr)], pte_paddr, 0, owner);
             memoryManager.rmapManager.attach(&memoryManager.pageinfos[PA2PGI(paddr)], pte_paddr, pte_vaddr, programManager.running->pid);
         }        
+
+        memoryManager.releasePages(AddressPoolType::KERNEL, bitmapStart, bitmapPage);
+        memoryManager.releasePages(AddressPoolType::KERNEL, privStart, privPage);
     }
+    bitmapStart = 0;
+    privStart = 0;
+    bitmapPage = 0;
+    privPage = 0;
+    owner = 0;
     this->isInitialized = false;
 }
 
@@ -548,4 +560,3 @@ UserSegment UserVAddressPool::vaddr2Seg(const uint32 vaddr) const {
         return UserSegment::EMPTY;
     }
 }
-

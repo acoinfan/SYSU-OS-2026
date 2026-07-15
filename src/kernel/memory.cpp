@@ -498,7 +498,7 @@ void MemoryManager::releasePages(enum AddressPoolType type, const int virtualAdd
         // 第一步，对每一个虚拟页，释放为其分配的物理页
         pde = (int *)toPDE(vaddr);
         // 不存在PDE, 跳过
-        if (!((*pde)) & PDE_PRESENT) {
+        if (!((*pde) & PDE_PRESENT)) {
             continue;
         }
         pte = (int *)toPTE(vaddr);
@@ -680,7 +680,6 @@ int MemoryManager::allocatePageTable() {
     if (!page) {
         return 0;
     } else {
-        pageinfos[PA2PGI(page)].clear();
         pageinfos[PA2PGI(page)].incRef();
         pageinfos[PA2PGI(page)].setFlag(PG_KERNEL | PG_LOCKED);
         return page;
@@ -712,8 +711,9 @@ void MemoryManager::releasePageTable(uint32 PDEptr) {
     ASSERT(pageinfos[PA2PGI(page)].hasFlag(PG_KERNEL));
     ASSERT(pageinfos[PA2PGI(page)].hasFlag(PG_LOCKED));
     ASSERT(pageinfos[PA2PGI(page)].getRef() == 1);
-    pageinfos[PA2PGI(page)].clear();
-    pageinfos[PA2PGI(page)].setFlag(PG_FREE);
+    pageinfos[PA2PGI(page)].clearFlag(PG_LOCKED);
+    releasePhysicalPages(AddressPoolType::KERNEL, page, 1);
+    *(uint32*)PDEptr = 0;
     return;
 }
 
@@ -732,6 +732,16 @@ bool MemoryManager::PDEdec(uint32 PDEptr) {
     PDE_SET_COUNT(PDEptr, count);
     if (count == 0) return true;
     else return false;
+}
+
+static void release_user_page_table_force(uint32 PDEptr) {
+    uint32 page = (*(uint32*)PDEptr) & PDE_GET_ADDRESS;
+    ASSERT(memoryManager.pageinfos[PA2PGI(page)].hasFlag(PG_KERNEL));
+    ASSERT(memoryManager.pageinfos[PA2PGI(page)].hasFlag(PG_LOCKED));
+    ASSERT(memoryManager.pageinfos[PA2PGI(page)].getRef() == 1);
+    memoryManager.pageinfos[PA2PGI(page)].clearFlag(PG_LOCKED);
+    memoryManager.releasePhysicalPages(AddressPoolType::KERNEL, page, 1);
+    *(uint32*)PDEptr = 0;
 }
 
 void MemoryManager::destroyUserVAPool(UserVAddressPool* userVirtual, uint32 pageDirVAddr) {
@@ -764,7 +774,7 @@ void MemoryManager::destroyUserVAPool(UserVAddressPool* userVirtual, uint32 page
     for (uint32 vaddr = 0; vaddr <= USER_VADDR_END; vaddr += PAGE_SIZE * PAGE_SIZE) {
         uint32 PDEptr = toPDE(vaddr);
         if (*(uint32*)PDEptr & PDE_PRESENT) {
-            releasePageTable(PDEptr);
+            release_user_page_table_force(PDEptr);
         }
     }
     // 切回内核页表
