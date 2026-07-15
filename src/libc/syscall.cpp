@@ -41,6 +41,10 @@ void execveFunc(uint32 func_addr) {
     _syscall1(SYS_EXECFUNC, func_addr);
 }
 
+int execve(const char* path) {
+    return (int)_syscall1(SYS_EXEC, (uint32)path);
+}
+
 uint32 expandHeap(uint32 pageCount) {
     return _syscall1(SYS_EXPANDHEAP, pageCount);
 }

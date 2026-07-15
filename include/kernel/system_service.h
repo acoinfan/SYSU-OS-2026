@@ -58,6 +58,8 @@ void syscall_yield();
 
 void k_execveFunc(uint32 func);
 void syscall_execveFunc(uint32 func);
+int k_execve(const char* filename);
+int syscall_execve(const char* filename);
 
 uint32 syscall_expandHeap(uint32 pageCount);
 

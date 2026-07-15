@@ -28,6 +28,8 @@ int pte_dump(uint32 vaddr);
 
 void execveFunc(uint32 func_addr);
 
+int execve(const char* path);
+
 uint32 expandHeap(uint32 pageCount);
 
 int close(int fd);

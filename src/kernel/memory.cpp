@@ -736,15 +736,21 @@ bool MemoryManager::PDEdec(uint32 PDEptr) {
 
 void MemoryManager::destroyUserVAPool(UserVAddressPool* userVirtual, uint32 pageDirVAddr) {
     // 释放页表和物理页
-    releasePages(AddressPoolType::USER, userVirtual->segBoundary.text.start, 
-                (userVirtual->segBoundary.text.end - userVirtual->segBoundary.text.start + 1) / PAGE_SIZE,
-                UserSegment::TEXT);
-    releasePages(AddressPoolType::USER, userVirtual->segBoundary.data.start, 
-                (userVirtual->segBoundary.data.end - userVirtual->segBoundary.data.start + 1) / PAGE_SIZE,
-                UserSegment::DATA);
-    releasePages(AddressPoolType::USER, userVirtual->segBoundary.bss.start, 
-                (userVirtual->segBoundary.bss.end - userVirtual->segBoundary.bss.start + 1) / PAGE_SIZE,
-                UserSegment::BSS);      
+    if (userVirtual->segBoundary.text.start <= userVirtual->segBoundary.text.end) {
+        releasePages(AddressPoolType::USER, userVirtual->segBoundary.text.start, 
+                    (userVirtual->segBoundary.text.end - userVirtual->segBoundary.text.start + 1) / PAGE_SIZE,
+                    UserSegment::TEXT);
+    }
+    if (userVirtual->segBoundary.data.start <= userVirtual->segBoundary.data.end) {
+        releasePages(AddressPoolType::USER, userVirtual->segBoundary.data.start, 
+                    (userVirtual->segBoundary.data.end - userVirtual->segBoundary.data.start + 1) / PAGE_SIZE,
+                    UserSegment::DATA);
+    }
+    if (userVirtual->segBoundary.bss.start <= userVirtual->segBoundary.bss.end) {
+        releasePages(AddressPoolType::USER, userVirtual->segBoundary.bss.start, 
+                    (userVirtual->segBoundary.bss.end - userVirtual->segBoundary.bss.start + 1) / PAGE_SIZE,
+                    UserSegment::BSS);
+    }
                                                   
     releasePages(AddressPoolType::USER, userVirtual->heapPool.startAddress, 
                 userVirtual->heapPool.length, UserSegment::HEAP);

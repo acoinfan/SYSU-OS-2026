@@ -12,8 +12,24 @@ void init(void* arg) {
     //     execveFunc((uint32)fork_test);
     //     return;
     // }
+    // if (fork() == 0) {
+    //     execveFunc((uint32)test_fd_fork_process);
+    //     return;
+    // }
     if (fork() == 0) {
-        execveFunc((uint32)test_fd_fork_process);
+        execve("/elf_test");
+        return;
+    }
+    if (fork() == 0) {
+        execve("/elf_test");
+        return;
+    }
+    if (fork() == 0) {
+        execve("/elf_test");
+        return;
+    }
+    if (fork() == 0) {
+        execve("/elf_test");
         return;
     }
     while (true)

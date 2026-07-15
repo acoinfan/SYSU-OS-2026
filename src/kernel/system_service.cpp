@@ -38,6 +38,7 @@ void SystemService::initialize()
     setSystemCall(SYS_MOVE_CURSOR, (int)syscall_move_cursor);
     setSystemCall(SYS_PTE_DUMP, (int)syscall_pte_dump);
     setSystemCall(SYS_PA_DUMP, (int)syscall_pa_dump);
+    setSystemCall(SYS_EXEC, (int)syscall_execve);
     setSystemCall(SYS_EXECFUNC, (int)syscall_execveFunc);
     setSystemCall(SYS_EXPANDHEAP, (int)syscall_expandHeap);
 }
@@ -107,6 +108,10 @@ void k_execveFunc(uint32 func) {
     asm_system_call(SYS_EXECFUNC, func);
 }
 
+int k_execve(const char* filename) {
+    return asm_system_call(SYS_EXEC, (int)filename);
+}
+
 // ====== syscall function ======
 uint16 syscall_getpid() {
     return programManager.getpid();
@@ -142,6 +147,10 @@ void syscall_yield() {
 
 void syscall_execveFunc(uint32 func) {
     programManager.execve((char*)func, nullptr, nullptr, 1);
+}
+
+int syscall_execve(const char* filename) {
+    return programManager.execve(filename, nullptr, nullptr, 0);
 }
 
 int syscall_pte_dump(uint32 vaddr)

@@ -10,6 +10,7 @@
 struct ElfSegment {
     UserSegment userSegment; // 对应的段
     uint32 vaddr;      // 段起始虚拟地址
+    uint32 file_vaddr; // 文件内容对应的起始虚拟地址
     uint32 memsz;      // 段在内存中的长度
     uint32 filesz;     // 文件中实际数据长度
     uint32 offset;     // 文件内偏移
@@ -21,6 +22,7 @@ struct ElfSegment {
 struct ELFConfig {
     uint32 entry;             // 真正程序入口VADDR
     uint32 entry_in_kernel;   // 留给func Load的接口
+    int source_fd;            // ELF文件fd, Function模式为-1
     ElfSegment segments[ELF_SEGMENT_AMOUNT];   // 实际数量可配, 目前包含TEXT DATA BSS
     uint32 segment_count;
 

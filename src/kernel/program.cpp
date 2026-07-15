@@ -8,6 +8,221 @@
 #include "system_service.h"
 #include "debug.h"
 
+namespace {
+
+constexpr uint32 EI_NIDENT = 16;
+constexpr uint8 EI_CLASS = 4;
+constexpr uint8 EI_DATA = 5;
+constexpr uint8 ELFCLASS32 = 1;
+constexpr uint8 ELFDATA2LSB = 1;
+constexpr uint16 ET_EXEC = 2;
+constexpr uint16 EM_386 = 3;
+constexpr uint32 EV_CURRENT = 1;
+constexpr uint32 PT_LOAD = 1;
+constexpr uint32 PF_X = 1;
+constexpr uint32 PF_W = 2;
+
+struct Elf32_Ehdr {
+    uint8 e_ident[EI_NIDENT];
+    uint16 e_type;
+    uint16 e_machine;
+    uint32 e_version;
+    uint32 e_entry;
+    uint32 e_phoff;
+    uint32 e_shoff;
+    uint32 e_flags;
+    uint16 e_ehsize;
+    uint16 e_phentsize;
+    uint16 e_phnum;
+    uint16 e_shentsize;
+    uint16 e_shnum;
+    uint16 e_shstrndx;
+} __attribute__((packed));
+
+struct Elf32_Phdr {
+    uint32 p_type;
+    uint32 p_offset;
+    uint32 p_vaddr;
+    uint32 p_paddr;
+    uint32 p_filesz;
+    uint32 p_memsz;
+    uint32 p_flags;
+    uint32 p_align;
+} __attribute__((packed));
+
+static uint32 align_down(uint32 value, uint32 align) {
+    return value & ~(align - 1);
+}
+
+static uint32 align_up(uint32 value, uint32 align) {
+    return (value + align - 1) & ~(align - 1);
+}
+
+static bool add_elf_segment(ELFConfig& elfConf, UserSegment userSegment, uint32 vaddr,
+                            uint32 file_vaddr, uint32 memsz, uint32 filesz,
+                            uint32 offset, VPageFlags flags) {
+    if (memsz == 0) {
+        return true;
+    }
+    if (elfConf.segment_count >= ELF_SEGMENT_AMOUNT) {
+        LOG_ERROR("ELF has too many loadable segments");
+        return false;
+    }
+
+    ElfSegment& seg = elfConf.segments[elfConf.segment_count++];
+    seg.userSegment = userSegment;
+    seg.vaddr = vaddr;
+    seg.file_vaddr = file_vaddr;
+    seg.memsz = memsz;
+    seg.filesz = filesz;
+    seg.offset = offset;
+    seg.flags = flags;
+    return true;
+}
+
+static void update_boundary(Boundary& boundary, uint32 start, uint32 end) {
+    if (boundary.start > boundary.end) {
+        boundary.start = start;
+        boundary.end = end;
+        return;
+    }
+    boundary.start = min(boundary.start, start);
+    boundary.end = max(boundary.end, end);
+}
+
+static bool map_process_page(PCB* process, uint32 vaddr, uint32 paddr, VPageFlags flags) {
+    uint32 pgdir = process->pageDirectoryAddress;
+    uint32 pde_idx = vaddr >> 22;
+    uint32* pde = (uint32*)(pgdir + pde_idx * sizeof(uint32));
+    uint32 pte_table_paddr = 0;
+
+    if (!((*pde) & PDE_PRESENT)) {
+        pte_table_paddr = memoryManager.allocatePageTable();
+        if (!pte_table_paddr) {
+            return false;
+        }
+
+        *pde = pte_table_paddr | PDE_USER;
+        uint32 pte_table_vaddr = memoryManager.mapTemp(AddressPoolType::KERNEL, pte_table_paddr);
+        if (!pte_table_vaddr) {
+            return false;
+        }
+        memset((void*)pte_table_vaddr, 0, PAGE_SIZE);
+        memoryManager.unmapTemp(AddressPoolType::KERNEL);
+    }
+
+    pte_table_paddr = *pde & PTE_GET_ADDRESS;
+    uint32 pte_idx = (vaddr >> 12) & 0x3ff;
+    uint32 pte_paddr = pte_table_paddr + pte_idx * sizeof(uint32);
+    uint32 pte_vaddr = memoryManager.mapTemp(AddressPoolType::KERNEL, pte_paddr);
+    if (!pte_vaddr) {
+        return false;
+    }
+
+    if (*(uint32*)pte_vaddr & PTE_PRESENT) {
+        memoryManager.unmapTemp(AddressPoolType::KERNEL);
+        return false;
+    }
+
+    *(uint32*)pte_vaddr = paddr | vPageFlags2PTE(flags) | PTE_PRESENT;
+    memoryManager.PDEinc((uint32)pde);
+    memoryManager.unmapTemp(AddressPoolType::KERNEL);
+
+    int attach_idx = memoryManager.rmapManager.attach(&memoryManager.pageinfos[PA2PGI(paddr)],
+                                                      pte_paddr, PTE_ANON_VADDR, process->pid);
+    if (attach_idx == -1) {
+        pte_vaddr = memoryManager.mapTemp(AddressPoolType::KERNEL, pte_paddr);
+        if (pte_vaddr) {
+            *(uint32*)pte_vaddr = 0;
+            memoryManager.unmapTemp(AddressPoolType::KERNEL);
+        }
+        memoryManager.PDEdec((uint32)pde);
+        return false;
+    }
+    return true;
+}
+
+static bool release_process_page(PCB* process, uint32 vaddr) {
+    uint32 pgdir = process->pageDirectoryAddress;
+    uint32 pde_idx = vaddr >> 22;
+    uint32* pde = (uint32*)(pgdir + pde_idx * sizeof(uint32));
+    if (!((*pde) & PDE_PRESENT)) {
+        return false;
+    }
+
+    uint32 pte_table_paddr = *pde & PTE_GET_ADDRESS;
+    uint32 pte_idx = (vaddr >> 12) & 0x3ff;
+    uint32 pte_paddr = pte_table_paddr + pte_idx * sizeof(uint32);
+    uint32 pte_vaddr = memoryManager.mapTemp(AddressPoolType::KERNEL, pte_paddr);
+    if (!pte_vaddr) {
+        return false;
+    }
+
+    uint32 pte_value = *(uint32*)pte_vaddr;
+    if (!(pte_value & PTE_PRESENT)) {
+        memoryManager.unmapTemp(AddressPoolType::KERNEL);
+        return false;
+    }
+
+    uint32 paddr = pte_value & PTE_GET_ADDRESS;
+    *(uint32*)pte_vaddr = 0;
+    memoryManager.unmapTemp(AddressPoolType::KERNEL);
+    memoryManager.rmapManager.detach(&memoryManager.pageinfos[PA2PGI(paddr)],
+                                     pte_paddr, 0, process->pid);
+    memoryManager.releasePhysicalPages(AddressPoolType::USER, paddr, 1);
+    memoryManager.PDEdec((uint32)pde);
+    return true;
+}
+
+static void rollback_loaded_segments(PCB* process, const ELFConfig& elfConf) {
+    for (uint32 i = 0; i < elfConf.segment_count; i++) {
+        const ElfSegment& seg = elfConf.segments[i];
+        uint32 page_begin = align_down(seg.vaddr, PAGE_SIZE);
+        uint32 page_end = align_up(seg.vaddr + seg.memsz, PAGE_SIZE);
+        for (uint32 vaddr = page_begin; vaddr < page_end; vaddr += PAGE_SIZE) {
+            release_process_page(process, vaddr);
+        }
+    }
+}
+
+static bool load_segment_page(int fd, const ElfSegment& seg, uint32 page_vaddr,
+                              uint32 page_paddr, void* io_buffer) {
+    if (!io_buffer) {
+        return false;
+    }
+
+    memset(io_buffer, 0, PAGE_SIZE);
+
+    uint32 seg_file_begin = seg.file_vaddr;
+    uint32 seg_file_end = seg.file_vaddr + seg.filesz;
+    uint32 page_begin = page_vaddr;
+    uint32 page_end = page_vaddr + PAGE_SIZE;
+    uint32 copy_begin = max(page_begin, seg_file_begin);
+    uint32 copy_end = min(page_end, seg_file_end);
+
+    if (copy_begin < copy_end) {
+        uint32 chunk = copy_end - copy_begin;
+        if (fileManager.fseek(fd, seg.offset + copy_begin - seg.file_vaddr, 0) < 0) {
+            return false;
+        }
+        int ret = fileManager.read(fd, (void*)((uint32)io_buffer + copy_begin - page_begin), chunk);
+        if (ret != (int)chunk) {
+            return false;
+        }
+    }
+
+    uint32 page_kaddr = memoryManager.mapTemp(AddressPoolType::KERNEL, page_paddr);
+    if (!page_kaddr) {
+        return false;
+    }
+
+    memcpy((void*)page_kaddr, io_buffer, PAGE_SIZE);
+    memoryManager.unmapTemp(AddressPoolType::KERNEL);
+    return true;
+}
+
+} // namespace
+
 const int PCB_SIZE = 4096;                   // PCB的大小，4KB。
 // 存放PCB的数组，预留了MAX_PROGRAM_AMOUNT个PCB的大小空间
 char PCB_SET[PCB_SIZE * MAX_PROGRAM_AMOUNT]; 
@@ -278,8 +493,8 @@ void ProgramManager::dumpELFConfig(const ELFConfig& elfConf) {
     LOG_TRACE("  segment_cnt= %d", elfConf.segment_count);
     for (uint32 i = 0; i < elfConf.segment_count; ++i) {
         const ElfSegment& seg = elfConf.segments[i];
-        LOG_TRACE("  seg[%d]: type=%d vaddr=0x%x memsz=%u filesz=%u offset=%u flags=0x%x",
-               i, (int)seg.userSegment, seg.vaddr, seg.memsz, seg.filesz, seg.offset, (uint32)seg.flags);
+        LOG_TRACE("  seg[%d]: type=%d vaddr=0x%x file_vaddr=0x%x memsz=%u filesz=%u offset=%u flags=0x%x",
+               i, (int)seg.userSegment, seg.vaddr, seg.file_vaddr, seg.memsz, seg.filesz, seg.offset, (uint32)seg.flags);
     }
     LOG_TRACE("  stack_top  = 0x%x", elfConf.stack_top);
     LOG_TRACE("  stack_begin= 0x%x", elfConf.stack_begin);
@@ -322,6 +537,10 @@ int ProgramManager::executeProcess(const char *filename, int priority, int mode,
         ASSERT(0);
         asm_halt();
     }
+    if (!elfConf.entry) {
+        interruptManager.setInterruptStatus(status);
+        return -1;
+    }
     dumpELFConfig(elfConf);
 
     // 在线程创建的基础上初步创建进程的PCB
@@ -330,6 +549,9 @@ int ProgramManager::executeProcess(const char *filename, int priority, int mode,
 
     if (pid == -1)
     {
+        if (elfConf.source_fd >= 0) {
+            fileManager.close(elfConf.source_fd);
+        }
         interruptManager.setInterruptStatus(status);
         return -1;
     }
@@ -342,19 +564,29 @@ int ProgramManager::executeProcess(const char *filename, int priority, int mode,
     if (!process->pageDirectoryAddress)
     {
         process->status = ProgramStatus::DEAD;
+        if (elfConf.source_fd >= 0) {
+            fileManager.close(elfConf.source_fd);
+        }
         interruptManager.setInterruptStatus(status);
         return -1;
     }
 
     // 创建进程的虚拟地址池
-    bool res = createUserVirtualPool(process, elfConf, 1);
+    bool res = createUserVirtualPool(process, elfConf, mode);
     LOG_TRACE("create res: %d, pid: %d\n", res, pid);
 
     if (!res)
     {
         process->status = ProgramStatus::DEAD;
+        if (elfConf.source_fd >= 0) {
+            fileManager.close(elfConf.source_fd);
+        }
         interruptManager.setInterruptStatus(status);
         return -1;
+    }
+
+    if (elfConf.source_fd >= 0) {
+        fileManager.close(elfConf.source_fd);
     }
 
     // 最后加入队列
@@ -404,23 +636,29 @@ bool ProgramManager::createUserVirtualPool(PCB *process, const ELFConfig& elfCon
     // activateProgramPage(process);
     // 计算BitMap Node等大小, 并预先分配对应KernelVA
     SegBoundary segBoundary = {};
+    segBoundary.text.start = elfConf.heap_begin;
+    segBoundary.text.end = elfConf.heap_begin - 1;
+    segBoundary.data.start = elfConf.heap_begin;
+    segBoundary.data.end = elfConf.heap_begin - 1;
+    segBoundary.bss.start = elfConf.heap_begin;
+    segBoundary.bss.end = elfConf.heap_begin - 1;
 
     // 固定Segment分配和初始化
     for (int i = 0; i < elfConf.segment_count; i++) {
         switch (elfConf.segments[i].userSegment) {
             case UserSegment::TEXT: {
-                segBoundary.text.start = elfConf.segments[i].vaddr;
-                segBoundary.text.end = segBoundary.text.start + elfConf.segments[i].memsz - 1;
+                update_boundary(segBoundary.text, elfConf.segments[i].vaddr,
+                                elfConf.segments[i].vaddr + elfConf.segments[i].memsz - 1);
                 break;
             }
             case UserSegment::DATA: {
-                segBoundary.data.start = elfConf.segments[i].vaddr;
-                segBoundary.data.end = segBoundary.data.start + elfConf.segments[i].memsz - 1;
+                update_boundary(segBoundary.data, elfConf.segments[i].vaddr,
+                                elfConf.segments[i].vaddr + elfConf.segments[i].memsz - 1);
                 break;                
             }
             case UserSegment::BSS: {
-                segBoundary.bss.start = elfConf.segments[i].vaddr;
-                segBoundary.bss.end = segBoundary.bss.start + elfConf.segments[i].memsz - 1;
+                update_boundary(segBoundary.bss, elfConf.segments[i].vaddr,
+                                elfConf.segments[i].vaddr + elfConf.segments[i].memsz - 1);
                 break;                
             }
             default:
@@ -464,7 +702,48 @@ bool ProgramManager::createUserVirtualPool(PCB *process, const ELFConfig& elfCon
     uint16 owner = process->pid;
     // 创建资源后, 初始化
     if (mode == 0) {
-        // TODO: load_from_disk();
+        bool initRes = process->userVirtual.initialize(segBoundary, heapConf, stackConf,
+                                    mmapConf, TLSConf, process->pid);
+        if (!initRes) return false;
+
+        void* io_buffer = (void*)memoryManager.allocatePages(AddressPoolType::KERNEL, 1, VP_RW);
+        if (!io_buffer) {
+            process->userVirtual.destroy();
+            return false;
+        }
+
+        for (uint32 i = 0; i < elfConf.segment_count; i++) {
+            const ElfSegment& seg = elfConf.segments[i];
+            uint32 page_begin = align_down(seg.vaddr, PAGE_SIZE);
+            uint32 page_end = align_up(seg.vaddr + seg.memsz, PAGE_SIZE);
+            for (uint32 vaddr = page_begin; vaddr < page_end; vaddr += PAGE_SIZE) {
+                uint32 paddr = memoryManager.allocatePhysicalPages(AddressPoolType::USER, 1);
+                if (!paddr) {
+                    rollback_loaded_segments(process, elfConf);
+                    process->userVirtual.destroy();
+                    memoryManager.releasePages(AddressPoolType::KERNEL, (uint32)io_buffer, 1);
+                    return false;
+                }
+
+                if (!load_segment_page(elfConf.source_fd, seg, vaddr, paddr, io_buffer)) {
+                    memoryManager.releasePhysicalPages(AddressPoolType::USER, paddr, 1);
+                    rollback_loaded_segments(process, elfConf);
+                    process->userVirtual.destroy();
+                    memoryManager.releasePages(AddressPoolType::KERNEL, (uint32)io_buffer, 1);
+                    return false;
+                }
+
+                if (!map_process_page(process, vaddr, paddr, seg.flags)) {
+                    memoryManager.releasePhysicalPages(AddressPoolType::USER, paddr, 1);
+                    rollback_loaded_segments(process, elfConf);
+                    process->userVirtual.destroy();
+                    memoryManager.releasePages(AddressPoolType::KERNEL, (uint32)io_buffer, 1);
+                    return false;
+                }
+            }
+        }
+        memoryManager.releasePages(AddressPoolType::KERNEL, (uint32)io_buffer, 1);
+        return true;
     } else if (mode == 1) {
         // LOAD FUNC
         // initialize userVA
@@ -491,13 +770,15 @@ bool ProgramManager::createUserVirtualPool(PCB *process, const ELFConfig& elfCon
         ASSERT(0);
         asm_halt();
     }
-    // 装载
+    return false;
 }
 
 // 注意, 这里使用的是左闭右开定义
 void ProgramManager::func2ELF(ELFConfig& elfConf, const void* entry) {
+    memset(&elfConf, 0, sizeof(ELFConfig));
     elfConf.entry = (((uint32)entry) & 0xfff) + USER_VADDR_START;
     elfConf.entry_in_kernel = (uint32)entry;
+    elfConf.source_fd = -1;
     
     elfConf.segment_count = 3;   // 仅TEXT, 只读, 5页大小
     elfConf.segments[0].userSegment = UserSegment::TEXT;
@@ -506,6 +787,7 @@ void ProgramManager::func2ELF(ELFConfig& elfConf, const void* entry) {
     elfConf.segments[0].memsz = PAGE_SIZE * 5;
     elfConf.segments[0].offset = 0;
     elfConf.segments[0].vaddr = USER_VADDR_START;
+    elfConf.segments[0].file_vaddr = USER_VADDR_START;
 
     elfConf.segments[1].userSegment = UserSegment::DATA;
     elfConf.segments[1].filesz = 0;
@@ -513,6 +795,7 @@ void ProgramManager::func2ELF(ELFConfig& elfConf, const void* entry) {
     elfConf.segments[1].memsz = 0;
     elfConf.segments[1].offset = 0;
     elfConf.segments[1].vaddr = USER_VADDR_START + elfConf.segments[0].memsz;
+    elfConf.segments[1].file_vaddr = elfConf.segments[1].vaddr;
 
     elfConf.segments[2].userSegment = UserSegment::BSS;
     elfConf.segments[2].filesz = 0;
@@ -520,6 +803,7 @@ void ProgramManager::func2ELF(ELFConfig& elfConf, const void* entry) {
     elfConf.segments[2].memsz = 0;
     elfConf.segments[2].offset = 0;
     elfConf.segments[2].vaddr = USER_VADDR_START + elfConf.segments[0].memsz;
+    elfConf.segments[2].file_vaddr = elfConf.segments[2].vaddr;
 
     // Stack
     elfConf.stack_top = STACK_TOP;
@@ -569,7 +853,154 @@ void ProgramManager::activateProgramPage(PCB *program)
 
 // TODO
 ELFConfig ProgramManager::parseELF(const char* filename) {
-    return {};
+    ELFConfig elfConf;
+    memset(&elfConf, 0, sizeof(ELFConfig));
+    elfConf.source_fd = -1;
+
+    int fd = fileManager.open(filename, 0);
+    if (fd < 0) {
+        LOG_ERROR("parseELF: cannot open %s", filename);
+        return elfConf;
+    }
+
+    Elf32_Ehdr ehdr;
+    if (fileManager.read(fd, &ehdr, sizeof(ehdr)) != (int)sizeof(ehdr)) {
+        LOG_ERROR("parseELF: cannot read ELF header");
+        fileManager.close(fd);
+        return elfConf;
+    }
+
+    if (ehdr.e_ident[0] != 0x7f || ehdr.e_ident[1] != 'E' ||
+        ehdr.e_ident[2] != 'L' || ehdr.e_ident[3] != 'F' ||
+        ehdr.e_ident[EI_CLASS] != ELFCLASS32 ||
+        ehdr.e_ident[EI_DATA] != ELFDATA2LSB ||
+        ehdr.e_type != ET_EXEC ||
+        ehdr.e_machine != EM_386 ||
+        ehdr.e_version != EV_CURRENT ||
+        ehdr.e_phentsize != sizeof(Elf32_Phdr) ||
+        ehdr.e_phnum == 0) {
+        LOG_ERROR("parseELF: invalid i386 ELF");
+        fileManager.close(fd);
+        return elfConf;
+    }
+
+    elfConf.entry = ehdr.e_entry;
+    elfConf.entry_in_kernel = 0;
+    elfConf.source_fd = fd;
+
+    uint32 max_static_end = USER_VADDR_START;
+    for (uint16 i = 0; i < ehdr.e_phnum; i++) {
+        Elf32_Phdr phdr;
+        uint32 phoff = ehdr.e_phoff + i * sizeof(Elf32_Phdr);
+        if (fileManager.fseek(fd, phoff, 0) < 0 ||
+            fileManager.read(fd, &phdr, sizeof(phdr)) != (int)sizeof(phdr)) {
+            LOG_ERROR("parseELF: cannot read program header");
+            fileManager.close(fd);
+            elfConf.source_fd = -1;
+            elfConf.entry = 0;
+            return elfConf;
+        }
+
+        if (phdr.p_type != PT_LOAD) {
+            continue;
+        }
+        if (phdr.p_memsz == 0) {
+            continue;
+        }
+        if (phdr.p_filesz > phdr.p_memsz ||
+            phdr.p_vaddr < USER_VADDR_START ||
+            phdr.p_vaddr + phdr.p_memsz < phdr.p_vaddr ||
+            phdr.p_vaddr + phdr.p_memsz >= STACK_TOP) {
+            LOG_ERROR("parseELF: invalid load segment");
+            fileManager.close(fd);
+            elfConf.source_fd = -1;
+            elfConf.entry = 0;
+            return elfConf;
+        }
+
+        uint32 file_end = phdr.p_vaddr + phdr.p_filesz;
+        uint32 mem_end = phdr.p_vaddr + phdr.p_memsz;
+        VPageFlags flags = (VPageFlags)(VP_USER | ((phdr.p_flags & PF_W) ? VP_RW : 0));
+
+        if (phdr.p_flags & PF_X) {
+            uint32 text_begin = align_down(phdr.p_vaddr, PAGE_SIZE);
+            uint32 text_end = align_up(mem_end, PAGE_SIZE);
+            if (!add_elf_segment(elfConf, UserSegment::TEXT, text_begin,
+                                 phdr.p_vaddr, text_end - text_begin,
+                                 phdr.p_filesz, phdr.p_offset, flags)) {
+                fileManager.close(fd);
+                elfConf.source_fd = -1;
+                elfConf.entry = 0;
+                return elfConf;
+            }
+            max_static_end = max(max_static_end, text_end);
+            continue;
+        }
+
+        uint32 data_begin = align_down(phdr.p_vaddr, PAGE_SIZE);
+        uint32 data_end = phdr.p_filesz ? align_up(file_end, PAGE_SIZE) : data_begin;
+        if (phdr.p_filesz && data_end > data_begin) {
+            if (!add_elf_segment(elfConf, UserSegment::DATA, data_begin,
+                                 phdr.p_vaddr, data_end - data_begin,
+                                 phdr.p_filesz, phdr.p_offset, flags)) {
+                fileManager.close(fd);
+                elfConf.source_fd = -1;
+                elfConf.entry = 0;
+                return elfConf;
+            }
+            max_static_end = max(max_static_end, data_end);
+        }
+
+        uint32 bss_begin = data_end;
+        uint32 bss_end = align_up(mem_end, PAGE_SIZE);
+        if (bss_begin < bss_end) {
+            if (!add_elf_segment(elfConf, UserSegment::BSS, bss_begin,
+                                 bss_begin, bss_end - bss_begin, 0, 0,
+                                 (VPageFlags)(VP_USER | VP_RW))) {
+                fileManager.close(fd);
+                elfConf.source_fd = -1;
+                elfConf.entry = 0;
+                return elfConf;
+            }
+            max_static_end = max(max_static_end, bss_end);
+        }
+    }
+
+    if (elfConf.segment_count == 0 ||
+        elfConf.entry < USER_VADDR_START ||
+        elfConf.entry >= max_static_end) {
+        LOG_ERROR("parseELF: no loadable segment or invalid entry");
+        fileManager.close(fd);
+        elfConf.source_fd = -1;
+        elfConf.entry = 0;
+        return elfConf;
+    }
+
+    elfConf.stack_top = STACK_TOP;
+    elfConf.stack_size = STACK_SIZE;
+    elfConf.stack_begin = elfConf.stack_top - elfConf.stack_size;
+    elfConf.stack_pages = STACK_PREALLOC_PAGE;
+
+    uint32 cnt_end = align_up(max_static_end, PAGE_SIZE);
+    elfConf.heap_begin = cnt_end;
+    elfConf.heap_size = HEAP_SIZE;
+    cnt_end += elfConf.heap_size;
+
+    elfConf.tls_begin = cnt_end;
+    elfConf.tls_size = MAX_THREAD_AMOUNT * PAGE_SIZE;
+    cnt_end += elfConf.tls_size;
+
+    elfConf.mmap_begin = cnt_end;
+    elfConf.mmap_size = elfConf.stack_begin - elfConf.mmap_begin;
+    if (elfConf.mmap_begin >= elfConf.stack_begin || elfConf.mmap_size % PAGE_SIZE != 0) {
+        LOG_ERROR("parseELF: user layout overflow");
+        fileManager.close(fd);
+        elfConf.source_fd = -1;
+        elfConf.entry = 0;
+        return elfConf;
+    }
+
+    return elfConf;
 }
 
 // 0 for fork
@@ -998,6 +1429,10 @@ int ProgramManager::execve(const char *filename, char *const argv[], char *const
         ASSERT(0);
         asm_halt();
     }
+    if (!elfConf.entry) {
+        interruptManager.setInterruptStatus(status);
+        return -1;
+    }
     dumpELFConfig(elfConf);
 
     // 使用现有进程PCB
@@ -1008,30 +1443,42 @@ int ProgramManager::execve(const char *filename, char *const argv[], char *const
     // 清除原有的页目录表, 页表, 虚拟地址池, 同时切换为内核页表
     ASSERT(process->pageDirectoryAddress);
     memoryManager.destroyUserVAPool(&process->userVirtual, process->pageDirectoryAddress);
+    process->pageDirectoryAddress = 0;
 
     // 创建进程的页目录表
     pageDirAddr = createProcessPageDirectory(process->pid);
     if (!pageDirAddr)
     {
+        if (elfConf.source_fd >= 0) {
+            fileManager.close(elfConf.source_fd);
+        }
         process->status = ProgramStatus::DEAD;
         interruptManager.setInterruptStatus(status);
         return -1;
     }
+    process->pageDirectoryAddress = pageDirAddr;
     
     
 
     // 创建进程的虚拟地址池, 同时初始化部分段内容, 设置COW
-    bool res = createUserVirtualPool(process, elfConf, 1);
-    LOG_TRACE("create res: %d, pid: %d\n", res, pid);
+    bool res = createUserVirtualPool(process, elfConf, mode);
+    LOG_TRACE("create res: %d, pid: %d\n", res, process->pid);
 
     if (!res)
     {
+        if (elfConf.source_fd >= 0) {
+            fileManager.close(elfConf.source_fd);
+        }
         process->status = ProgramStatus::DEAD;
         interruptManager.setInterruptStatus(status);
         programManager.schedule(); 
 
         // 理论上 schedule() 换走后就永远不会回来了
         while(1) { asm_halt(); }
+    }
+
+    if (elfConf.source_fd >= 0) {
+        fileManager.close(elfConf.source_fd);
     }
 
     // 切换页表

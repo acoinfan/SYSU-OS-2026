@@ -25,10 +25,11 @@ kernel: libs builtin boot-pre
 	$(MAKE) -C ../src/kernel
 	@echo "kernel objects ready"
 
-user: $(USER_OBJS)
-	@echo "user objects ready: $^"
+user: libs
+	$(MAKE) -C ../src/user
+	@echo "user elfs ready"
 
-image: bootloader
+image: bootloader user
 	dd if=$(OBJDIR)/boot/mbr.bin of=$(RUNDIR)/hd.img bs=512 count=1 seek=0 conv=notrunc
 	dd if=$(OBJDIR)/boot/bootloader.bin of=$(RUNDIR)/hd.img bs=512 count=5 seek=1 conv=notrunc
 	@KERNEL_SECTORS=$$((($$(wc -c < $(OBJDIR)/boot/kernel.bin) + 511) / 512)); \
