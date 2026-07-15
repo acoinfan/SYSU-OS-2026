@@ -1,6 +1,17 @@
 build/obj/*
 .vscode
 run
+!run/
+run/*
+!run/test/
+run/test/*
+!run/test/README.md
+!run/test/dir1/
+run/test/dir1/*
+!run/test/dir1/testf
+!run/test/dir1/dir2/
+run/test/dir1/dir2/*
+!run/test/dir1/dir2/.gitkeep
 lib/*
 .codex
 .agents

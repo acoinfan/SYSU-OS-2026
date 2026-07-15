@@ -61,7 +61,8 @@ image: bootloader test bin
 
 	@if find $(RUNDIR)/test -mindepth 1 -maxdepth 1 ! -name bin -print -quit >/dev/null 2>&1; then \
 		for item in $(RUNDIR)/test/*; do \
-			if [ "$$(basename "$$item")" != "bin" ]; then \
+			name=$$(basename "$$item"); \
+			if [ "$$name" != "bin" ] && [ "$$name" != "README.md" ]; then \
 				mcopy -i $(RUNDIR)/test.img -s "$$item" :: ; \
 			fi; \
 		done; \
