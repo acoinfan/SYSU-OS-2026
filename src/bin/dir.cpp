@@ -2,33 +2,25 @@
 #include "syscall.h"
 #include "vfs.h"
 
-#define LS_MAX_ENTRIES 64
+#define DIR_MAX_ENTRIES 64
 
 static void print_entry(const LsEntry& entry)
 {
-    if (entry.type == VFS_ENTRY_DIR) {
-        printf("d ");
-    } else {
-        printf("- ");
-    }
-
-    printf("%8u ", entry.size);
-    printf("%s\n", entry.name);
+    printf("%c %8u %s\n", entry.type == VFS_ENTRY_DIR ? 'd' : '-', entry.size, entry.name);
 }
 
 int main(int argc, char** argv)
 {
-    LsEntry entries[LS_MAX_ENTRIES];
+    LsEntry entries[DIR_MAX_ENTRIES];
     const char* path = argc >= 2 ? argv[1] : ".";
-    int count = vfs_ls(path, entries, LS_MAX_ENTRIES);
+    int count = vfs_ls(path, entries, DIR_MAX_ENTRIES);
     if (count < 0) {
-        printf("ls: cannot list %s\n", path);
+        printf("dir: cannot list %s\n", path);
         return 1;
     }
 
     for (int i = 0; i < count; i++) {
         print_entry(entries[i]);
     }
-
     return 0;
 }

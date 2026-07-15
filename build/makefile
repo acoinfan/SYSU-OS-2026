@@ -74,17 +74,27 @@ clean:
 run:
 	qemu-system-i386 -hda $(RUNDIR)/hd.img -hdb $(RUNDIR)/root.img -hdc $(RUNDIR)/test.img -display curses
 
-export: export-root
-
-export-root:
+export:
 	@mkdir -p $(RUNDIR)/export
 	@rm -rf $(RUNDIR)/export/*
 	mcopy -i $(RUNDIR)/root.img -s "::/*" $(RUNDIR)/export/
+	@find $(RUNDIR)/export -depth -exec sh -c 'base=$$(basename "$$1"); dir=$$(dirname "$$1"); lower=$$(printf "%s" "$$base" | tr A-Z a-z); if [ "$$base" != "$$lower" ] && [ ! -e "$$dir/$$lower" ]; then mv "$$1" "$$dir/$$lower"; fi' sh {} \;
+	@mkdir -p $(RUNDIR)/export/mnt/test
+	@rm -rf $(RUNDIR)/export/mnt/test/*
+	mcopy -i $(RUNDIR)/test.img -s "::/*" $(RUNDIR)/export/mnt/test/
+	@find $(RUNDIR)/export/mnt/test -depth -exec sh -c 'base=$$(basename "$$1"); dir=$$(dirname "$$1"); lower=$$(printf "%s" "$$base" | tr A-Z a-z); if [ "$$base" != "$$lower" ] && [ ! -e "$$dir/$$lower" ]; then mv "$$1" "$$dir/$$lower"; fi' sh {} \;
+
+export-root:
+	@mkdir -p $(RUNDIR)/export
+	@find $(RUNDIR)/export -mindepth 1 -maxdepth 1 ! -name mnt -exec rm -rf {} +
+	mcopy -i $(RUNDIR)/root.img -s "::/*" $(RUNDIR)/export/
+	@find $(RUNDIR)/export -depth -exec sh -c 'base=$$(basename "$$1"); dir=$$(dirname "$$1"); lower=$$(printf "%s" "$$base" | tr A-Z a-z); if [ "$$base" != "$$lower" ] && [ ! -e "$$dir/$$lower" ]; then mv "$$1" "$$dir/$$lower"; fi' sh {} \;
 
 export-test:
-	@mkdir -p $(RUNDIR)/export-test
-	@rm -rf $(RUNDIR)/export-test/*
-	mcopy -i $(RUNDIR)/test.img -s "::/*" $(RUNDIR)/export-test/
+	@mkdir -p $(RUNDIR)/export/mnt/test
+	@rm -rf $(RUNDIR)/export/mnt/test/*
+	mcopy -i $(RUNDIR)/test.img -s "::/*" $(RUNDIR)/export/mnt/test/
+	@find $(RUNDIR)/export/mnt/test -depth -exec sh -c 'base=$$(basename "$$1"); dir=$$(dirname "$$1"); lower=$$(printf "%s" "$$base" | tr A-Z a-z); if [ "$$base" != "$$lower" ] && [ ! -e "$$dir/$$lower" ]; then mv "$$1" "$$dir/$$lower"; fi' sh {} \;
 
 export-log:
 	@mkdir -p $(RUNDIR)/export

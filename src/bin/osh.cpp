@@ -329,7 +329,8 @@ static bool builtin_cmd(char** argv, int argc)
         return true;
     }
 
-    if (streq(argv[0], "quit")) {
+    if (streq(argv[0], "exit") || streq(argv[0], "quit")) {
+        sync();
         exit(0);
     }
 
