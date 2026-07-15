@@ -12,6 +12,7 @@
 #include "debug.h"
 #include "init.h"
 #include "fileSys/file_manager.h"
+#include "keyboard.h"
 
 // #include "fileSys/disk_driver.h" // for debug
 // 屏幕IO处理器
@@ -28,6 +29,8 @@ TSS tss;
 SystemService systemService;
 // 文件管理器
 FileManager fileManager;
+// 键盘输入管理器
+KeyboardManager keyboardManager;
 
 static void test_fat12_fs()
 {
@@ -336,6 +339,7 @@ extern "C" void setup_kernel()
     // 中断管理器
     interruptManager.initialize();
     interruptManager.setTimeInterrupt((void *)asm_time_interrupt_handler);
+    interruptManager.setKeyboardInterrupt((void *)asm_keyboard_interrupt_handler);
     
     // 输出管理器
     screen.initialize();
@@ -351,6 +355,8 @@ extern "C" void setup_kernel()
 
     // 文件管理器
     fileManager.initialize(IdeDrive::PrimarySlave, fs_type::FXT12);
+    // 键盘输入管理器
+    keyboardManager.initialize();
     
     // int testPid1 = programManager.executeThread(test_file_open_close, nullptr, "file open close test", 1, true);
     // if (testPid1 == -1)
@@ -413,6 +419,7 @@ extern "C" void setup_kernel()
     // 第一次切换 pid=0
     
     interruptManager.enableTimeInterrupt();
+    interruptManager.enableKeyboardInterrupt();
     asm_switch_thread(&rubbish, firstThread);
     asm_halt();
 }

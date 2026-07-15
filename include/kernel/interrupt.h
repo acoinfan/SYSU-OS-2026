@@ -24,6 +24,9 @@ public:
     void disableTimeInterrupt();
     // 设置时钟中断处理函数
     void setTimeInterrupt(void *handler);
+    void enableKeyboardInterrupt();
+    void disableKeyboardInterrupt();
+    void setKeyboardInterrupt(void *handler);
 
     // 开中断
     void enableInterrupt();

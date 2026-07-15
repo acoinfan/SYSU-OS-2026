@@ -173,9 +173,30 @@ void InterruptManager::disableTimeInterrupt()
     asm_out_port(0x21, value);
 }
 
+void InterruptManager::enableKeyboardInterrupt()
+{
+    uint8 value;
+    asm_in_port(0x21, &value);
+    value = value & 0xfd;
+    asm_out_port(0x21, value);
+}
+
+void InterruptManager::disableKeyboardInterrupt()
+{
+    uint8 value;
+    asm_in_port(0x21, &value);
+    value = value | 0x02;
+    asm_out_port(0x21, value);
+}
+
 void InterruptManager::setTimeInterrupt(void *handler)
 {
     setInterruptDescriptor(IRQ0_8259A_MASTER, (uint32)handler, 0);
+}
+
+void InterruptManager::setKeyboardInterrupt(void *handler)
+{
+    setInterruptDescriptor(IRQ0_8259A_MASTER + 1, (uint32)handler, 0);
 }
 
 void InterruptManager::enableInterrupt()
@@ -205,4 +226,3 @@ void InterruptManager::setInterruptStatus(bool status)
         disableInterrupt();
     }
 }
-

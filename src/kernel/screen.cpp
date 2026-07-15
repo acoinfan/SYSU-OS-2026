@@ -31,6 +31,27 @@ void SCREEN::print(uint x, uint y, uint8 c, uint8 color)
 
 void SCREEN::print(uint8 c, uint8 color)
 {
+    if (c == '\n')
+    {
+        uint row = getCursor() / 80;
+        if (row == 24)
+        {
+            rollUp();
+        }
+        else
+        {
+            ++row;
+        }
+        moveCursor(row * 80);
+        return;
+    }
+
+    if (c == '\b')
+    {
+        backspace();
+        return;
+    }
+
     uint cursor = getCursor();
     screen[2 * cursor] = c;
     screen[2 * cursor + 1] = color;
@@ -98,6 +119,20 @@ void SCREEN::moveCursor(uint x, uint y)
     moveCursor(x * 80 + y);
 }
 
+void SCREEN::backspace()
+{
+    uint cursor = getCursor();
+    if (cursor == 0)
+    {
+        return;
+    }
+
+    cursor--;
+    screen[2 * cursor] = ' ';
+    screen[2 * cursor + 1] = 0x07;
+    moveCursor(cursor);
+}
+
 void SCREEN::rollUp()
 {
     uint length;
@@ -121,26 +156,7 @@ int SCREEN::print(const char *const str)
 
     for (i = 0; str[i]; ++i)
     {
-        switch (str[i])
-        {
-        case '\n':
-            uint row;
-            row = getCursor() / 80;
-            if (row == 24)
-            {
-                rollUp();
-            }
-            else
-            {
-                ++row;
-            }
-            moveCursor(row * 80);
-            break;
-
-        default:
-            print(str[i]);
-            break;
-        }
+        print(str[i]);
     }
 
     return i;
@@ -164,4 +180,3 @@ void kputc(char c) {
         idx = 0;
     } 
 }
-

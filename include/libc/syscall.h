@@ -23,6 +23,7 @@ void pa_dump();
 void exit(int code);
 
 int write(const char* buffer);
+int write(int fd, const void* buf, int size);
 
 int pte_dump(uint32 vaddr);
 
@@ -40,6 +41,7 @@ int waitpid(int pid, int* retval);
 void move_cursor(int row, int col);
 
 int open(const char* path, int flags);
+int read(int fd, void* buf, int size);
 int fdread(int fd, void* buf, int size);
 int fdwrite(int fd, void* buf, int size);
 int fdappend(int fd, void* buf, int size);

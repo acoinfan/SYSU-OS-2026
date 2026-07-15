@@ -1,6 +1,7 @@
 #include "syscall.h"
 #include "os_type.h"
 #include "enum.h"
+#include "stdlib.h"
 
 // 调用
 // 0 Args
@@ -30,7 +31,10 @@ void exit(int code) {
 }
 
 int write(const char* buffer) {
-    return (int)_syscall1(SYS_WRITE, (uint32)buffer);
+    if (!buffer) {
+        return -1;
+    }
+    return write(1, buffer, strlen(buffer));
 }
 
 int pte_dump(uint32 vaddr) {
@@ -66,12 +70,20 @@ int open(const char* path, int flags) {
     return (int)_syscall2(SYS_OPEN, (uint32)path, (uint32)flags);
 }
 
+int read(int fd, void* buf, int size) {
+    return (int)_syscall3(SYS_READ, (uint32)fd, (uint32)buf, (uint32)size);
+}
+
+int write(int fd, const void* buf, int size) {
+    return (int)_syscall3(SYS_WRITE, (uint32)fd, (uint32)buf, (uint32)size);
+}
+
 int fdread(int fd, void* buf, int size) {
     return (int)_syscall3(SYS_FDREAD, (uint32)fd, (uint32)buf, (uint32)size);
 }
 
 int fdwrite(int fd, void* buf, int size) {
-    return (int)_syscall3(SYS_FDWRITE, (uint32)fd, (uint32)buf, (uint32)size);
+    return write(fd, buf, size);
 }
 
 int fdappend(int fd, void* buf, int size) {

@@ -7,6 +7,7 @@ global asm_halt
 global asm_out_port
 global asm_in_port
 global asm_time_interrupt_handler
+global asm_keyboard_interrupt_handler
 global asm_enable_interrupt
 global asm_enable_interrupt
 global asm_disable_interrupt
@@ -23,6 +24,7 @@ global asm_update_cr3
 global asm_save_process_context
 
 extern c_time_interrupt_handler
+extern c_keyboard_interrupt
 extern system_call_table
 extern c_ide_primary_interrupt
 extern c_ide_secondary_interrupt
@@ -134,6 +136,34 @@ asm_time_interrupt_handler:
     out 0xa0, al
     
     call c_time_interrupt_handler
+
+    popad
+    pop gs
+    pop fs
+    pop es
+    pop ds
+    iret
+
+asm_keyboard_interrupt_handler:
+    push ds
+    push es
+    push fs
+    push gs
+    pushad
+
+    mov ax, 0x10
+    mov ds, ax
+    mov es, ax
+
+    xor eax, eax
+    in al, 0x60
+    push eax
+
+    mov al, 0x20
+    out 0x20, al
+
+    call c_keyboard_interrupt
+    add esp, 4
 
     popad
     pop gs

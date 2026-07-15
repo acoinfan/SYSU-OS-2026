@@ -1341,6 +1341,7 @@ void ProgramManager::exit(int ret)
     LOG_INFO("At Exit: pid = %d", program->pid);
     LOG_INFO("Kernel Physical Avail Pages: %d", memoryManager.kernelPhysical.dump());
     LOG_INFO("User Physical Avail Pages: %d", memoryManager.userPhysical.dump());
+    LOG_INFO("Return Val: %d", program->retValue);
     // 第四步，立即执行线程/进程调度。
     schedule();
 

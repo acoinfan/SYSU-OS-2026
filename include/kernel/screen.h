@@ -26,6 +26,8 @@ public:
     void moveCursor(uint x, uint y);
     // 获取光标位置
     uint getCursor();
+    // 删除光标前一个字符
+    void backspace();
 
 private:
     // 滚屏

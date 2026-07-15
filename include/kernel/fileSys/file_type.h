@@ -6,6 +6,14 @@
 
 #define MAX_FD_COUNT 64
 
+enum class FDType : uint8 {
+    EMPTY = 0,
+    FILE,
+    STDIN,
+    STDOUT,
+    STDERR
+};
+
 struct OpenFile {
     void *node;     // 指向对应inode
     fs_type type;   // 对应inode的解析方法
@@ -16,5 +24,6 @@ struct OpenFile {
 struct File {
     OpenFile* openfile; // 对应的openfile信息
     int offset;         // 对应文件已阅读偏移
+    FDType type;
 };
 #endif

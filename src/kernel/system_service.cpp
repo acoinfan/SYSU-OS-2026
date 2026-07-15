@@ -23,6 +23,7 @@ void SystemService::initialize()
     setSystemCall(SYS_WAIT, (int)syscall_wait);
     setSystemCall(SYS_YIELD, (int)syscall_yield);
     setSystemCall(SYS_WRITE, (int)syscall_write);
+    setSystemCall(SYS_READ, (int)syscall_read);
     setSystemCall(SYS_OPEN, (int)syscall_open);
     setSystemCall(SYS_CLOSE, (int)syscall_close);
     setSystemCall(SYS_FDREAD, (int)syscall_fdread);
@@ -81,7 +82,10 @@ int k_fork() {
 }
 
 int k_write(const char *str) {
-    return asm_system_call(SYS_WRITE, (int)str);
+    if (!str) {
+        return -1;
+    }
+    return asm_system_call(SYS_WRITE, 1, (int)str, strlen(str));
 }
 
 void k_exit(int ret) {
@@ -89,7 +93,7 @@ void k_exit(int ret) {
 }
 
 int k_wait(int *retval) {
-    k_waitpid(-1, retval);
+    return k_waitpid(-1, retval);
 }
 
 int k_waitpid(int pid, int *retval) {
@@ -121,8 +125,8 @@ uint16 syscall_getppid() {
     return programManager.getppid();
 }
 
-int syscall_write(const char *str) {
-    return screen.print(str);
+int syscall_write(int fd, void* buf, int size) {
+    return fileManager.write(fd, buf, size);
 }
 
 int syscall_fork() {
@@ -204,6 +208,10 @@ int syscall_open(const char* path, int flags) {
 
 int syscall_close(int fd) {
     return fileManager.close(fd);
+}
+
+int syscall_read(int fd, void* buf, int size) {
+    return fileManager.read(fd, buf, size);
 }
 
 int syscall_fdread(int fd, void* buf, int size) {

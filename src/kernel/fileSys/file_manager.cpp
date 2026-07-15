@@ -659,11 +659,12 @@ int FileManager::open(const char* path, int flags) {
         goto done;
     }
 
-    for (int i = 0; i < MAX_FD_COUNT; i++) {
-        if (!process->fd_table[i].openfile) {
+    for (int i = 3; i < MAX_FD_COUNT; i++) {
+        if (process->fd_table[i].type == FDType::EMPTY) {
             fd = i;
             process->fd_table[i].openfile = openfile;
             process->fd_table[i].offset = 0;
+            process->fd_table[i].type = FDType::FILE;
             openfile->refcount++;
             break;
         }
@@ -705,15 +706,22 @@ int FileManager::close_fd(PCB* process, int fd) {
     if (!process || fd < 0 || fd >= MAX_FD_COUNT) {
         goto done;
     }
+    if (process->fd_table[fd].type == FDType::STDIN ||
+        process->fd_table[fd].type == FDType::STDOUT ||
+        process->fd_table[fd].type == FDType::STDERR) {
+        ret = -1;
+        goto done;
+    }
 
     file = &process->fd_table[fd];
     openfile = file->openfile;
-    if (!openfile) {
+    if (file->type != FDType::FILE || !openfile) {
         goto done;
     }
 
     file->openfile = nullptr;
     file->offset = 0;
+    file->type = FDType::EMPTY;
     openfile->refcount--;
 
     if (openfile->refcount <= 0) {
@@ -748,6 +756,9 @@ void FileManager::init_process_fs(PCB* pcb) {
 
     if (pcb) {
         memset(pcb->fd_table, 0, sizeof(pcb->fd_table));
+        pcb->fd_table[0].type = FDType::STDIN;
+        pcb->fd_table[1].type = FDType::STDOUT;
+        pcb->fd_table[2].type = FDType::STDERR;
         memset(&pcb->fs_info, 0, sizeof(pcb->fs_info));
         pcb->fs_info.cwd_path[0] = '/';
         pcb->fs_info.cwd_path[1] = '\0';
@@ -764,7 +775,7 @@ void FileManager::fork_process_fs(PCB* child, PCB* parent) {
         memcpy(&child->fs_info, &parent->fs_info, sizeof(fs_context));
         for (int i = 0; i < MAX_FD_COUNT; i++) {
             child->fd_table[i] = parent->fd_table[i];
-            if (child->fd_table[i].openfile) {
+            if (child->fd_table[i].type == FDType::FILE && child->fd_table[i].openfile) {
                 child->fd_table[i].openfile->refcount++;
             }
         }
@@ -790,10 +801,13 @@ void FileManager::release_process_fs(PCB* pcb) {
     interruptManager.disableInterrupt();
 
     if (pcb) {
-        for (int i = 0; i < MAX_FD_COUNT; i++) {
+        for (int i = 3; i < MAX_FD_COUNT; i++) {
             close_fd(pcb, i);
         }
         memset(pcb->fd_table, 0, sizeof(pcb->fd_table));
+        pcb->fd_table[0].type = FDType::STDIN;
+        pcb->fd_table[1].type = FDType::STDOUT;
+        pcb->fd_table[2].type = FDType::STDERR;
         memset(&pcb->fs_info, 0, sizeof(pcb->fs_info));
         pcb->fs_info.cwd_path[0] = '/';
         pcb->fs_info.cwd_path[1] = '\0';
@@ -848,6 +862,13 @@ int FileManager::read(int fd, void* buf, int size) {
     }
 
     File* file = &process->fd_table[fd];
+    if (file->type == FDType::STDIN) {
+        return keyboardManager.read((char*)buf, size);
+    }
+    if (file->type != FDType::FILE) {
+        return -1;
+    }
+
     OpenFile* openfile = file->openfile;
     if (!openfile) {
         return -1;
@@ -877,6 +898,17 @@ int FileManager::write(int fd, void* buf, int size) {
     }
 
     File* file = &process->fd_table[fd];
+    if (file->type == FDType::STDOUT || file->type == FDType::STDERR) {
+        const char* str = (const char*)buf;
+        for (int i = 0; i < size; i++) {
+            screen.print(str[i]);
+        }
+        return size;
+    }
+    if (file->type != FDType::FILE) {
+        return -1;
+    }
+
     OpenFile* openfile = file->openfile;
     if (!openfile) {
         return -1;
@@ -908,13 +940,13 @@ int FileManager::append(int fd, void* buf, int size) {
     File* file = nullptr;
     OpenFile* openfile = nullptr;
 
-    if (!process || fd < 0 || fd >= MAX_FD_COUNT || !buf || size <= 0) {
+    if (!process || fd <= 2 || fd >= MAX_FD_COUNT || !buf || size <= 0) {
         goto done;
     }
 
     file = &process->fd_table[fd];
     openfile = file->openfile;
-    if (!openfile) {
+    if (file->type != FDType::FILE || !openfile) {
         goto done;
     }
 

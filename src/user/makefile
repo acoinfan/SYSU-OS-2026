@@ -14,7 +14,7 @@ $(OBJDIR)/user/%.o: %.cpp
 
 $(RUNDIR)/test/%: $(OBJDIR)/user/%.o $(LIBC_LIB)
 	@mkdir -p $(dir $@)
-	$(LINKER) -melf_i386 -N -Ttext 0x08048000 -e main -o $@ $< $(LIBC_LIB)
+	$(LINKER) -melf_i386 -N -Ttext 0x08048000 -e _start -o $@ $< $(LIBC_LIB)
 
 clean:
 	rm -rf $(OBJDIR)/user

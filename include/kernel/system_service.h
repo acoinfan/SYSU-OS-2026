@@ -16,7 +16,6 @@ public:
 };
 
 
-// 暂时未启用
 int sys_write(int fd, const char* buf, int len);
 
 // 6
@@ -28,7 +27,7 @@ void syscall_pa_dump();
 
 // 第1个系统调用, write
 int k_write(const char *str);
-int syscall_write(const char *str);
+int syscall_write(int fd, void* buf, int size);
 
 // 第2个系统调用, fork
 int k_fork();
@@ -65,6 +64,7 @@ uint32 syscall_expandHeap(uint32 pageCount);
 
 int syscall_open(const char* path, int flags);
 int syscall_close(int fd);
+int syscall_read(int fd, void* buf, int size);
 int syscall_fdread(int fd, void* buf, int size);
 int syscall_fdwrite(int fd, void* buf, int size);
 int syscall_fdappend(int fd, void* buf, int size);
