@@ -36,6 +36,7 @@ void assert_fail(
     const char *func
 );
 
+void debug_log_init();
 void debug_log_clear();
 void debug_log_append(char c);
 const char* debug_log_data();

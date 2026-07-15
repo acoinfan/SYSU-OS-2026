@@ -93,13 +93,13 @@ void stack_test() {
 void test_file_open_close(void* arg) {
     write("[file_test] begin\n");
 
-    int fd0 = open("/dir1/testf", 0);
-    printf("[file_test] open /dir1/testf -> %d\n", fd0);
+    int fd0 = open("/mnt/test/dir1/testf", 0);
+    printf("[file_test] open /mnt/test/dir1/testf -> %d\n", fd0);
 
-    int fd1 = open("/dir1/testf", 0);
+    int fd1 = open("/mnt/test/dir1/testf", 0);
     printf("[file_test] open same file again -> %d\n", fd1);
 
-    int fd_bad = open("/dir1/not_exist", 0);
+    int fd_bad = open("/mnt/test/dir1/testf/not_exist", 0);
     printf("[file_test] open missing file -> %d\n", fd_bad);
 
     int close0 = close(fd0);
@@ -111,7 +111,7 @@ void test_file_open_close(void* arg) {
     int close_again = close(fd1);
     printf("[file_test] close fd1 again -> %d\n", close_again);
 
-    int fd2 = open("/dir1/testf", 0);
+    int fd2 = open("/mnt/test/dir1/testf", 0);
     printf("[file_test] reopen after close -> %d\n", fd2);
 
     int close2 = close(fd2);
@@ -126,7 +126,7 @@ void test_file_read_write(void* arg) {
     char buf[64];
     memset(buf, 0, sizeof(buf));
 
-    int fd = open("/dir1/testf", 0);
+    int fd = open("/mnt/test/dir1/testf", 0);
     printf("[rw_test] open -> %d\n", fd);
 
     int r = fdread(fd, buf, 31);
@@ -134,13 +134,13 @@ void test_file_read_write(void* arg) {
     close(fd);
 
     char patch[] = "HELLO";
-    fd = open("/dir1/testf", 0);
+    fd = open("/mnt/test/dir1/testf", 0);
     int w = fdwrite(fd, patch, 5);
     printf("[rw_test] write -> %d\n", w);
     close(fd);
 
     memset(buf, 0, sizeof(buf));
-    fd = open("/dir1/testf", 0);
+    fd = open("/mnt/test/dir1/testf", 0);
     r = fdread(fd, buf, 31);
     printf("[rw_test] read after write -> %d, data = %s\n", r, buf);
     close(fd);
@@ -316,18 +316,18 @@ static void fork_log_kv(const char* key, int value) {
 void test_fd_fork_process() {
     write("[fork_fd] begin\n");
 
-    remove_file("/forkfd.log");
-    create_file("/forkfd.log", 0);
-    fork_log_fd = open("/forkfd.log", 0);
+    remove_file("/mnt/test/forkfd.log");
+    create_file("/mnt/test/forkfd.log", 0);
+    fork_log_fd = open("/mnt/test/forkfd.log", 0);
     fork_log("[fork_fd] begin\n");
     fork_log_kv("[fork_fd] log fd = ", fork_log_fd);
 
-    remove_file("/forkfd.txt");
-    int cr = create_file("/forkfd.txt", 0);
-    printf("[fork_fd] create /forkfd.txt -> %d\n", cr);
-    fork_log_kv("[fork_fd] create /forkfd.txt -> ", cr);
+    remove_file("/mnt/test/forkfd.txt");
+    int cr = create_file("/mnt/test/forkfd.txt", 0);
+    printf("[fork_fd] create /mnt/test/forkfd.txt -> %d\n", cr);
+    fork_log_kv("[fork_fd] create /mnt/test/forkfd.txt -> ", cr);
 
-    int fd = open("/forkfd.txt", 0);
+    int fd = open("/mnt/test/forkfd.txt", 0);
     printf("[fork_fd] open -> %d\n", fd);
     fork_log_kv("[fork_fd] open -> ", fd);
     if (fd < 0) {
@@ -418,7 +418,7 @@ void test_fd_fork_process() {
     printf("[fork_fd:parent] close fd -> %d\n", c);
     fork_log_kv("[fork_fd:parent] close fd -> ", c);
 
-    int fd2 = open("/forkfd.txt", 0);
+    int fd2 = open("/mnt/test/forkfd.txt", 0);
     printf("[fork_fd:parent] reopen after all close -> %d\n", fd2);
     fork_log_kv("[fork_fd:parent] reopen after all close -> ", fd2);
     if (fd2 >= 0) {

@@ -162,6 +162,9 @@ bool fat12_dir_iter::next() {
             if (entry.name[0] == '\0') {
                 return false;   // 根目录结束
             }
+            if ((uint8)entry.name[0] == 0xE5) {
+                continue;       // 跳过已删除条目
+            }
             if (entry.attr & fat12_attr::VOLUME_ID) {
                 continue;       // 跳过卷标
             }

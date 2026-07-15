@@ -1,5 +1,5 @@
 include config.mk
-.PHONY: all build kernel test bin clean run debug gdb libs export export-root export-test export-log boot-pre bootloader
+.PHONY: all build kernel test user bin clean run debug gdb libs export export-root export-test export-log boot-pre bootloader
 
 all: build
 
@@ -28,6 +28,10 @@ kernel: libs builtin boot-pre
 test: libs
 	$(MAKE) -C ../src/test
 	@echo "test elfs ready"
+
+user: libs
+	$(MAKE) -C ../src/user
+	@echo "user elfs ready"
 
 bin: libs
 	$(MAKE) -C ../src/bin
@@ -67,6 +71,7 @@ clean:
 	$(MAKE) -C ../src/libc clean
 	$(MAKE) -C ../src/builtin clean
 	$(MAKE) -C ../src/test clean
+	$(MAKE) -C ../src/user clean
 	$(MAKE) -C ../src/bin clean
 	$(MAKE) -C ../src/boot clean
 	$(MAKE) -C ../src/kernel clean

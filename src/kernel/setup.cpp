@@ -13,6 +13,7 @@
 #include "init.h"
 #include "fileSys/file_manager.h"
 #include "keyboard.h"
+#include "setup.h"
 
 // #include "fileSys/disk_driver.h" // for debug
 // 屏幕IO处理器
@@ -36,7 +37,7 @@ void idle_thread(void *arg)
 {
     kprintf("start idle, pid = 0\n");
     uint32 count = 0;
-    // sleep
+
     // test_fat12_fs();
     int pid = programManager.executeProcess((const char*)init, 0, 1);
     if (pid == -1)
@@ -152,9 +153,11 @@ extern "C" void setup_kernel()
 }
 
 // 以下是测试用函数
-static void test_fat12_fs()
+static FAT12_FS fat12_test_fs;
+
+void test_fat12_fs()
 {
-    FAT12_FS fs;
+    FAT12_FS& fs = fat12_test_fs;
     fat12_inode *root = nullptr;
     fat12_inode *dir1 = nullptr;
     fat12_inode *testf = nullptr;
@@ -163,11 +166,12 @@ static void test_fat12_fs()
     char buf[128];
     int res = 0;
 
+    debug_log_init();
     debug_log_clear();
     test_log_printf("=== FAT12 TEST BEGIN ===\n");
 
     test_log_printf("[1] mount and dump root dir\n");
-    if (!fs.mount(IdeDrive::PrimarySlave)) {
+    if (!fs.mount(IdeDrive::SecondaryMaster)) {
         test_log_printf("[fail] mount fail\n");
         return;
     }
@@ -304,7 +308,7 @@ static void test_fat12_fs()
     }
     test_log_printf("[ok] umount ok\n");
 
-    if (!fs.mount(IdeDrive::PrimarySlave)) {
+    if (!fs.mount(IdeDrive::SecondaryMaster)) {
         test_log_printf("[fail] remount fail\n");
         return;
     }
@@ -329,6 +333,7 @@ static void test_fat12_fs()
     }
 
     test_log_printf("[7] write test log to fat12.log\n");
+    test_log_printf("=== FAT12 TEST END ===\n");
     {
         fat12_inode *log_file = fs.lookup(nullptr, "fat12.log");
         if (log_file) {
@@ -353,8 +358,8 @@ static void test_fat12_fs()
         }
     }
 
+    fs.flush_all();
     fs.umount();
-    test_log_printf("=== FAT12 TEST END ===\n");
 }
 
 void test_out_of_memory(void* arg) {

@@ -4,3 +4,4 @@ run
 lib/*
 .codex
 .agents
+report.md

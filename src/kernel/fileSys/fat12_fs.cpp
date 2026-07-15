@@ -1246,8 +1246,14 @@ bool FAT12_FS::remove_directory(fat12_inode* dir, const char* name) {
     fat12_inode* target = lookup(dir, name);
 
     if (!target) return false;                                  // invalid dir
-    if (!(target->attr & fat12_attr::DIRECTORY)) return false;  // not a dir
-    if (is_dir_empty(target) != 1)               return false;  // not empty
+    if (!(target->attr & fat12_attr::DIRECTORY)) {              // not a dir
+        release_inode(target);
+        return false;
+    }
+    if (is_dir_empty(target) != 1) {                             // not empty
+        release_inode(target);
+        return false;
+    }
 
     if (target->refcount != 1){
         // 还有更多地方已占用该文件夹
