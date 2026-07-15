@@ -77,4 +77,5 @@ int syscall_rmdir(const char* path);
 int syscall_fd_dump(int fd);
 int syscall_chdir(const char* path);
 int syscall_getcwd(char* buf, int size);
+int syscall_ls(const char* path, LsEntry* entries, int max_entries);
 #endif

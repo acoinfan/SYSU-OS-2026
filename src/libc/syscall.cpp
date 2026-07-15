@@ -126,6 +126,10 @@ int getcwd(char* buf, int size) {
     return (int)_syscall2(SYS_GETCWD, (uint32)buf, (uint32)size);
 }
 
+int vfs_ls(const char* path, LsEntry* entries, int max_entries) {
+    return (int)_syscall3(SYS_LS, (uint32)path, (uint32)entries, (uint32)max_entries);
+}
+
 // 对原有函数的复用
 int wait(int* retval) { 
     return waitpid(-1, retval); 

@@ -5,6 +5,7 @@
 #include "fileSys/fat12_fs.h"
 #include "fileSys/file_type.h"
 #include "enum.h"
+#include "vfs.h"
 
 #define MAX_OPENFILE_COUNT     1024
 #define MAX_MOUNT_COUNT        2
@@ -20,10 +21,6 @@ struct FS_info {
     fs_type type;
     IdeDrive disk;
     bool inuse;
-};
-
-struct FileEntry {
-
 };
 
 class FileManager {
@@ -78,7 +75,7 @@ public:
 
     // File* get_cwd(PCB* p);
     // int cd(PCB* p, const char* path);
-    int ls(OpenFile* dir, FileEntry* entries, int max_entries);
+    int ls(const char* path, LsEntry* entries, int max_entries);
     int mkdir(const char* path);
     int rmdir(const char* path);
 private:

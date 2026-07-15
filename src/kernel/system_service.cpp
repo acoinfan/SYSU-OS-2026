@@ -38,6 +38,7 @@ void SystemService::initialize()
     setSystemCall(SYS_FD_DUMP, (int)syscall_fd_dump);
     setSystemCall(SYS_CHDIR, (int)syscall_chdir);
     setSystemCall(SYS_GETCWD, (int)syscall_getcwd);
+    setSystemCall(SYS_LS, (int)syscall_ls);
     setSystemCall(SYS_MOVE_CURSOR, (int)syscall_move_cursor);
     setSystemCall(SYS_PTE_DUMP, (int)syscall_pte_dump);
     setSystemCall(SYS_PA_DUMP, (int)syscall_pa_dump);
@@ -262,4 +263,8 @@ int syscall_chdir(const char* path) {
 
 int syscall_getcwd(char* buf, int size) {
     return fileManager.getcwd(buf, size);
+}
+
+int syscall_ls(const char* path, LsEntry* entries, int max_entries) {
+    return fileManager.ls(path, entries, max_entries);
 }

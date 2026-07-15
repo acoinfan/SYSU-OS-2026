@@ -1267,3 +1267,78 @@ done:
     interruptManager.setInterruptStatus(status);
     return ret;
 }
+
+static void fill_ls_entry(LsEntry* dst, const fat12_normalized_entry& src) {
+    memset(dst, 0, sizeof(LsEntry));
+    strcpy(dst->name, src.name);
+    dst->attr = src.attr;
+    dst->start_cluster = src.start_cluster;
+    dst->size = src.file_size;
+    if (src.attr & fat12_attr::DIRECTORY) {
+        dst->type = VFS_ENTRY_DIR;
+    } else {
+        dst->type = VFS_ENTRY_FILE;
+    }
+}
+
+int FileManager::ls(const char* path, LsEntry* entries, int max_entries) {
+    bool status = interruptManager.getInterruptStatus();
+    interruptManager.disableInterrupt();
+    int ret = -1;
+    char normalized[MAX_PATH_LENGTH];
+    int fs_idx = 0;
+    int subpath_start = 1;
+    OpenFile* openfile = nullptr;
+    void* node = nullptr;
+
+    if (!path || !entries || max_entries <= 0) {
+        goto done;
+    }
+    if (normalizePath(path, normalized) != 0) {
+        goto done;
+    }
+    if (path_resolve_fs(this, normalized, &fs_idx, &subpath_start) != 0) {
+        goto done;
+    }
+
+    switch (fs_table[fs_idx].type) {
+        case fs_type::FXT12: {
+            FAT12_FS* fs = fat12_from_slot(fileSystems, fs_idx);
+            if (normalized[subpath_start] != '\0') {
+                openfile = lookup(normalized);
+                if (!openfile || openfile->type != fs_type::FXT12) {
+                    goto done;
+                }
+                node = openfile->node;
+                fat12_inode* inode = (fat12_inode*)node;
+                if (!inode || inode->fat12_fs != fs || !(inode->attr & fat12_attr::DIRECTORY)) {
+                    goto done;
+                }
+            }
+
+            fat12_dir_iter iter;
+            if (!iter.init(fs, (fat12_inode*)node)) {
+                goto done;
+            }
+
+            ret = 0;
+            while (ret < max_entries && iter.next()) {
+                const fat12_normalized_entry& entry = iter.get();
+                if (entry.name[0] == '\0' || (uint8)entry.name[0] == 0xE5) {
+                    continue;
+                }
+                fill_ls_entry(&entries[ret], entry);
+                ret++;
+            }
+            break;
+        }
+        default:
+            ret = -1;
+            break;
+    }
+
+done:
+    release_lookup_openfile(openfile);
+    interruptManager.setInterruptStatus(status);
+    return ret;
+}

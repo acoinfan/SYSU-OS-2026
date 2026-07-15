@@ -2,6 +2,7 @@
 #define SYSCALL_H
 
 #include "os_type.h"
+#include "vfs.h"
 
 #define FSEEK_SET 0
 #define FSEEK_CUR 1
@@ -54,6 +55,7 @@ int rmdir(const char* path);
 int fd_dump(int fd);
 int chdir(const char* path);
 int getcwd(char* buf, int size);
+int vfs_ls(const char* path, LsEntry* entries, int max_entries);
 
 // 复用waitpid
 int wait(int* retval);
