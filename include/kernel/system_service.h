@@ -75,4 +75,6 @@ void syscall_sync();
 int syscall_mkdir(const char* path);
 int syscall_rmdir(const char* path);
 int syscall_fd_dump(int fd);
+int syscall_chdir(const char* path);
+int syscall_getcwd(char* buf, int size);
 #endif

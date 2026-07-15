@@ -118,6 +118,14 @@ int fd_dump(int fd) {
     return (int)_syscall1(SYS_FD_DUMP, (uint32)fd);
 }
 
+int chdir(const char* path) {
+    return (int)_syscall1(SYS_CHDIR, (uint32)path);
+}
+
+int getcwd(char* buf, int size) {
+    return (int)_syscall2(SYS_GETCWD, (uint32)buf, (uint32)size);
+}
+
 // 对原有函数的复用
 int wait(int* retval) { 
     return waitpid(-1, retval); 

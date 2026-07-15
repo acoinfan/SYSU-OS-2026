@@ -148,6 +148,8 @@ enum SyscallType : uint8 {
     SYS_MKDIR,
     SYS_RMDIR,
     SYS_FD_DUMP,
+    SYS_CHDIR,
+    SYS_GETCWD,
     SYS_MOVE_CURSOR,
     SYS_PTE_DUMP,
     SYS_PA_DUMP,

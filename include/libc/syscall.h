@@ -52,6 +52,8 @@ void sync();
 int mkdir(const char* path);
 int rmdir(const char* path);
 int fd_dump(int fd);
+int chdir(const char* path);
+int getcwd(char* buf, int size);
 
 // 复用waitpid
 int wait(int* retval);

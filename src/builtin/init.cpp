@@ -33,7 +33,7 @@ void init(void* arg) {
     //     return;
     // }
     if (fork() == 0) {
-        execve("/kbdtest");
+        execve("/bin/osh");
         return;
     }
     while (true)

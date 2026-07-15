@@ -1,5 +1,5 @@
 include config.mk
-.PHONY: all build kernel user clean run debug gdb test libs export export-log boot-pre bootloader
+.PHONY: all build kernel user bin clean run debug gdb test libs export export-root export-test export-log boot-pre bootloader
 
 all: build
 
@@ -29,12 +29,22 @@ user: libs
 	$(MAKE) -C ../src/user
 	@echo "user elfs ready"
 
-image: bootloader user
+bin: libs
+	$(MAKE) -C ../src/bin
+	@echo "bin elfs ready"
+
+image: bootloader user bin
 	dd if=$(OBJDIR)/boot/mbr.bin of=$(RUNDIR)/hd.img bs=512 count=1 seek=0 conv=notrunc
 	dd if=$(OBJDIR)/boot/bootloader.bin of=$(RUNDIR)/hd.img bs=512 count=5 seek=1 conv=notrunc
 	@KERNEL_SECTORS=$$((($$(wc -c < $(OBJDIR)/boot/kernel.bin) + 511) / 512)); \
 	dd if=$(OBJDIR)/boot/kernel.bin of=$(RUNDIR)/hd.img bs=512 count=$$KERNEL_SECTORS seek=6 conv=notrunc,sync
-	@mkdir -p $(RUNDIR)/test
+	@mkdir -p $(RUNDIR)/root/bin $(RUNDIR)/test
+	dd if=/dev/zero of=$(RUNDIR)/root.img bs=1M count=8
+	mkfs.fat -F 12 -n ROOTVOL $(RUNDIR)/root.img
+	mmd -i $(RUNDIR)/root.img ::/bin ::/usr ::/usr/bin ::/home ::/tmp ::/mnt ::/mnt/test ::/dev ::/etc ::/var
+	@if find $(RUNDIR)/root/bin -mindepth 1 -maxdepth 1 -print -quit >/dev/null 2>&1; then \
+		mcopy -i $(RUNDIR)/root.img $(RUNDIR)/root/bin/* ::/bin ; \
+	fi
 	dd if=/dev/zero of=$(RUNDIR)/test.img bs=1M count=8
 
 	mkfs.fat -F 12 -n TESTVOL $(RUNDIR)/test.img
@@ -45,31 +55,43 @@ image: bootloader user
 	      # 卷标
 	
 
-	@if find $(RUNDIR)/test -mindepth 1 -print -quit >/dev/null 2>&1; then \
-		mcopy -i $(RUNDIR)/test.img -s $(RUNDIR)/test/* :: ; \
+	@if find $(RUNDIR)/test -mindepth 1 -maxdepth 1 ! -name bin -print -quit >/dev/null 2>&1; then \
+		for item in $(RUNDIR)/test/*; do \
+			if [ "$$(basename "$$item")" != "bin" ]; then \
+				mcopy -i $(RUNDIR)/test.img -s "$$item" :: ; \
+			fi; \
+		done; \
 	fi
 
 clean:
 	$(MAKE) -C ../src/libc clean
 	$(MAKE) -C ../src/builtin clean
+	$(MAKE) -C ../src/bin clean
 	$(MAKE) -C ../src/boot clean
 	$(MAKE) -C ../src/kernel clean
-	rm -f $(RUNDIR)/test.img
+	rm -f $(RUNDIR)/root.img $(RUNDIR)/test.img
 
 run:
-	qemu-system-i386 -hda $(RUNDIR)/hd.img -hdb $(RUNDIR)/test.img -display curses
+	qemu-system-i386 -hda $(RUNDIR)/hd.img -hdb $(RUNDIR)/root.img -hdc $(RUNDIR)/test.img -display curses
 
-export:
+export: export-root
+
+export-root:
 	@mkdir -p $(RUNDIR)/export
 	@rm -rf $(RUNDIR)/export/*
-	mcopy -i $(RUNDIR)/test.img -s "::/*" $(RUNDIR)/export/
+	mcopy -i $(RUNDIR)/root.img -s "::/*" $(RUNDIR)/export/
+
+export-test:
+	@mkdir -p $(RUNDIR)/export-test
+	@rm -rf $(RUNDIR)/export-test/*
+	mcopy -i $(RUNDIR)/test.img -s "::/*" $(RUNDIR)/export-test/
 
 export-log:
 	@mkdir -p $(RUNDIR)/export
-	mcopy -i $(RUNDIR)/test.img ::/fat12.log $(RUNDIR)/export/fat12.log
+	mcopy -i $(RUNDIR)/root.img ::/fat12.log $(RUNDIR)/export/fat12.log
 
 debug:
-	qemu-system-i386 -S -s -hda $(RUNDIR)/hd.img -hdb $(RUNDIR)/test.img
+	qemu-system-i386 -S -s -hda $(RUNDIR)/hd.img -hdb $(RUNDIR)/root.img -hdc $(RUNDIR)/test.img
 
 gdb:
 	gdb -x gdbinit

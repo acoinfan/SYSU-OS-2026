@@ -355,6 +355,9 @@ extern "C" void setup_kernel()
 
     // 文件管理器
     fileManager.initialize(IdeDrive::PrimarySlave, fs_type::FXT12);
+    if (fileManager.mount("test", IdeDrive::SecondaryMaster, fs_type::FXT12) != 0) {
+        kprintf("[setup] mount /mnt/test failed\n");
+    }
     // 键盘输入管理器
     keyboardManager.initialize();
     

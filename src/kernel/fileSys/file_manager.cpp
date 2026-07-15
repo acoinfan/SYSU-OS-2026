@@ -139,7 +139,8 @@ static bool path_is_mnt_prefix(const char* path) {
 }
 
 static FAT12_FS* fat12_from_slot(char* fileSystems, int slot) {
-    return (FAT12_FS*)(fileSystems + slot * PAGE_SIZE);
+    static_assert(sizeof(FAT12_FS) <= MAX_FILESYS_SIZE, "FAT12_FS exceeds VFS filesystem slot size");
+    return (FAT12_FS*)(fileSystems + slot * MAX_FILESYS_SIZE);
 }
 
 static int openfile_index(OpenFile* table, OpenFile* file) {
@@ -163,7 +164,7 @@ void FileManager::initialize(IdeDrive disk, fs_type fs_t) {
     // mount
     switch (fs_table[0].type) {
         case fs_type::FXT12: {
-            FAT12_FS* root_fs = (FAT12_FS*)fileSystems;
+            FAT12_FS* root_fs = fat12_from_slot(fileSystems, 0);
             root_fs->mount(disk);
             break;
         }
@@ -188,7 +189,7 @@ int FileManager::mount(const char* disk_name, IdeDrive disk, fs_type fs_t) {
 
     // 清除已有信息
     info = &fs_table[total_mount_disk];
-    memset(fileSystems + PAGE_SIZE * total_mount_disk, 0, PAGE_SIZE);
+    memset(fileSystems + MAX_FILESYS_SIZE * total_mount_disk, 0, MAX_FILESYS_SIZE);
     memset(info, 0, sizeof(FS_info));
 
     // 初始化info
@@ -200,7 +201,7 @@ int FileManager::mount(const char* disk_name, IdeDrive disk, fs_type fs_t) {
     // 挂载
     switch (fs_table[total_mount_disk].type) {
         case fs_type::FXT12: {
-            FAT12_FS* fs = (FAT12_FS*)(fileSystems + total_mount_disk * PAGE_SIZE);
+            FAT12_FS* fs = fat12_from_slot(fileSystems, total_mount_disk);
             res = fs->mount(info->disk);
             break;
         }
@@ -422,10 +423,17 @@ static int path_resolve_fs(FileManager* manager, const char* normalized, int* fs
         return 0;
     }
 
+    if (normalized[4] == '\0') {
+        return 0;
+    }
+
     pos = 5;
     int component_status = path_next_component(normalized, &pos, component);
-    if (component_status <= 0) {
+    if (component_status < 0) {
         return -1;
+    }
+    if (component_status == 0) {
+        return 0;
     }
 
     *fs_idx = -1;
@@ -849,6 +857,83 @@ int FileManager::dump_fd(int fd) {
             ret = -1;
             break;
     }
+
+done:
+    interruptManager.setInterruptStatus(status);
+    return ret;
+}
+
+int FileManager::chdir(const char* path) {
+    bool status = interruptManager.getInterruptStatus();
+    interruptManager.disableInterrupt();
+    int ret = -1;
+    char normalized[MAX_PATH_LENGTH];
+    PCB* process = programManager.running;
+    OpenFile* openfile = nullptr;
+    int fs_idx = 0;
+    int subpath_start = 1;
+
+    if (!process || !path) {
+        goto done;
+    }
+    if (normalizePath(path, normalized) != 0) {
+        goto done;
+    }
+    if (path_resolve_fs(this, normalized, &fs_idx, &subpath_start) == 0 &&
+        normalized[subpath_start] == '\0') {
+        strcpy(process->fs_info.cwd_path, normalized);
+        ret = 0;
+        goto done;
+    }
+
+    openfile = lookup(normalized);
+    if (!openfile) {
+        goto done;
+    }
+
+    switch (openfile->type) {
+        case fs_type::FXT12: {
+            fat12_inode* node = (fat12_inode*)openfile->node;
+            if (!node || !(node->attr & fat12_attr::DIRECTORY)) {
+                goto done;
+            }
+            break;
+        }
+        default:
+            goto done;
+    }
+
+    strcpy(process->fs_info.cwd_path, normalized);
+    ret = 0;
+
+done:
+    release_lookup_openfile(openfile);
+    interruptManager.setInterruptStatus(status);
+    return ret;
+}
+
+int FileManager::getcwd(char* buf, int size) {
+    bool status = interruptManager.getInterruptStatus();
+    interruptManager.disableInterrupt();
+    int ret = -1;
+    PCB* process = programManager.running;
+    const char* cwd = "/";
+    int len = 0;
+
+    if (!process || !buf || size <= 0) {
+        goto done;
+    }
+    if (process->fs_info.cwd_path[0]) {
+        cwd = process->fs_info.cwd_path;
+    }
+
+    len = strlen(cwd);
+    if (len + 1 > size) {
+        goto done;
+    }
+
+    strcpy(buf, cwd);
+    ret = len;
 
 done:
     interruptManager.setInterruptStatus(status);

@@ -10,7 +10,7 @@
 #define MAX_MOUNT_COUNT        2
 #define MAX_DISK_COUNT         4
 #define MAX_DISK_NAME          32
-#define MAX_FILESYS_SIZE       4096
+#define MAX_FILESYS_SIZE       65536
 #define MAX_PATH_LENGTH        256
 
 struct PCB;
@@ -35,7 +35,7 @@ public:
     // idx = 0是root
     FS_info fs_table[MAX_DISK_COUNT];
     // idx = 0是root
-    char fileSystems[PAGE_SIZE * MAX_DISK_COUNT];
+    char fileSystems[MAX_FILESYS_SIZE * MAX_DISK_COUNT];
 
     int total_mount_disk;
     bool dirty;
@@ -49,6 +49,8 @@ public:
     int fseek(int fd, int bias, int whence);
     int close(int fd);
     int dump_fd(int fd);
+    int chdir(const char* path);
+    int getcwd(char* buf, int size);
     // 关闭一个fd
     int close_fd(PCB* pcb, int fd);
 
