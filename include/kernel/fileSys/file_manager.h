@@ -13,6 +13,8 @@
 #define MAX_FILESYS_SIZE       4096
 #define MAX_PATH_LENGTH        256
 
+struct PCB;
+
 struct FS_info {
     char disk_name[MAX_DISK_NAME];
     fs_type type;
@@ -39,6 +41,7 @@ public:
     bool dirty;
     
     void initialize(IdeDrive disk, fs_type fs_t);
+    // 打开一个fd, 返回fd值
     int open(const char* path, int flags);
     int read(int fd, void* buf, int size);
     int write(int fd, void* buf, int size);
@@ -46,6 +49,13 @@ public:
     int fseek(int fd, int bias, int whence);
     int close(int fd);
     int dump_fd(int fd);
+    // 关闭一个fd
+    int close_fd(PCB* pcb, int fd);
+
+    void init_process_fs(PCB* pcb);
+    void fork_process_fs(PCB* child, PCB* parent);
+    void exec_process_fs(PCB* pcb);
+    void release_process_fs(PCB* pcb);
 
     // 将IdeDrive disk挂载到/mount/disk_name
     // return 0 if success

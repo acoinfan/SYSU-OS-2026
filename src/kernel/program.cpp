@@ -97,6 +97,7 @@ int ProgramManager::executeThread(ThreadFunction function, void *parameter, cons
     thread->ticksPassedBy = 0;
     thread->pid = ((int)thread - (int)PCB_SET) / PCB_SIZE;
     thread->parentPid = programManager.running ? programManager.running->pid: 0;
+    fileManager.init_process_fs(thread);
 
     // 线程栈
     // 最高的地方留给进程栈
@@ -210,6 +211,7 @@ void ProgramManager::schedule()
 void program_exit()
 {
     PCB *thread = programManager.running;
+    fileManager.release_process_fs(thread);
     thread->status = ProgramStatus::DEAD;
 
     if (thread->pid)
@@ -243,6 +245,7 @@ PCB *ProgramManager::allocatePCB()
 
 void ProgramManager::releasePCB(PCB *program)
 {
+    fileManager.release_process_fs(program);
     int index = ((int)program - (int)PCB_SET) / PCB_SIZE;
     PCB_SET_STATUS[index] = false;
     this->allPrograms.erase(&(program->tagInAllList));
@@ -834,6 +837,7 @@ bool ProgramManager::copyProcess(PCB* parent, PCB* child)
             return false;
         }
     }
+    fileManager.fork_process_fs(child, parent);
     return true;
 }
 
@@ -847,6 +851,7 @@ void ProgramManager::exit(int ret)
     // 第一步，标记PCB状态为`DEAD`并放入返回值。
     PCB *program = this->running;
     program->retValue = ret;
+    fileManager.release_process_fs(program);
     program->status = ProgramStatus::DEAD;
 
     LOG_TRACE("call exit\n");
@@ -997,6 +1002,7 @@ int ProgramManager::execve(const char *filename, char *const argv[], char *const
 
     // 使用现有进程PCB
     PCB *process = programManager.running;
+    fileManager.exec_process_fs(process);
 
     
     // 清除原有的页目录表, 页表, 虚拟地址池, 同时切换为内核页表

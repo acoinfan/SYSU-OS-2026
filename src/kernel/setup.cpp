@@ -311,6 +311,12 @@ void idle_thread(void *arg)
     uint32 count = 0;
     // sleep
     // test_fat12_fs();
+    int pid = programManager.executeProcess((const char*)init, 0, 1, nullptr);
+    if (pid == -1)
+    {
+        kprintf("can not execute init\n");
+        asm_halt();
+    }
     kprintf("idling\n");
     while (1)
     {
@@ -322,13 +328,6 @@ void idle_thread(void *arg)
             count = 0;
         };
     }
-    // int pid = programManager.executeThread(test_lazy_alloc_thread, nullptr, "test_lazy_alloc_thread", 1);
-    // if (pid == -1)
-    // {
-    //     printf("can not execute thread\n");
-    //     asm_halt();
-    // }
-    // asm_halt();
 }
 
 extern "C" void setup_kernel()
@@ -374,12 +373,19 @@ extern "C" void setup_kernel()
     //     asm_halt();
     // }
 
-    int testPid4 = programManager.executeThread(test_vfs_full, nullptr, "vfs full test", 1, true);
-    if (testPid4 == -1)
-    {
-        kprintf("can not execute vfs full test\n");
-        asm_halt();
-    }
+    // int testPid4 = programManager.executeThread(test_vfs_full, nullptr, "vfs full test", 1, true);
+    // if (testPid4 == -1)
+    // {
+    //     kprintf("can not execute vfs full test\n");
+    //     asm_halt();
+    // }
+
+    // int testPid5 = programManager.executeProcess((const char*)test_fd_fork_process, 1, 1);
+    // if (testPid5 == -1)
+    // {
+    //     kprintf("can not execute fd fork process test\n");
+    //     asm_halt();
+    // }
     
     // 创建第一个线程
     int pid = programManager.executeThread(idle_thread, nullptr, "idle thread", 1, true);

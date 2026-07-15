@@ -64,3 +64,5 @@ get_cache, put_cache, release_node, lookup
 FileManager关中断:
 mount, umount, open, close, create, remove, createDir, removeDir, lookup
 可能: ls, cd?
+
+注意 fork之后offset不共享

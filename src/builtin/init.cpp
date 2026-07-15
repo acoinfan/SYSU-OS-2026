@@ -8,8 +8,12 @@ void init(void* arg) {
     pa_dump();
     int count = 0;
 
+    // if (fork() == 0) {
+    //     execveFunc((uint32)fork_test);
+    //     return;
+    // }
     if (fork() == 0) {
-        execveFunc((uint32)malloc_test);
+        execveFunc((uint32)test_fd_fork_process);
         return;
     }
     while (true)

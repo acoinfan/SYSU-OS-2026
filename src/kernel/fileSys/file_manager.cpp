@@ -692,13 +692,16 @@ done:
 }
 
 int FileManager::close(int fd) {
+    return close_fd(programManager.running, fd);
+}
+
+int FileManager::close_fd(PCB* process, int fd) {
     bool status = interruptManager.getInterruptStatus();
     interruptManager.disableInterrupt();
     int ret = -1;
     File* file = nullptr;
     OpenFile* openfile = nullptr;
 
-    PCB* process = programManager.running;
     if (!process || fd < 0 || fd >= MAX_FD_COUNT) {
         goto done;
     }
@@ -737,6 +740,66 @@ int FileManager::close(int fd) {
 done:
     interruptManager.setInterruptStatus(status);
     return ret;
+}
+
+void FileManager::init_process_fs(PCB* pcb) {
+    bool status = interruptManager.getInterruptStatus();
+    interruptManager.disableInterrupt();
+
+    if (pcb) {
+        memset(pcb->fd_table, 0, sizeof(pcb->fd_table));
+        memset(&pcb->fs_info, 0, sizeof(pcb->fs_info));
+        pcb->fs_info.cwd_path[0] = '/';
+        pcb->fs_info.cwd_path[1] = '\0';
+    }
+
+    interruptManager.setInterruptStatus(status);
+}
+
+void FileManager::fork_process_fs(PCB* child, PCB* parent) {
+    bool status = interruptManager.getInterruptStatus();
+    interruptManager.disableInterrupt();
+
+    if (child && parent) {
+        memcpy(&child->fs_info, &parent->fs_info, sizeof(fs_context));
+        for (int i = 0; i < MAX_FD_COUNT; i++) {
+            child->fd_table[i] = parent->fd_table[i];
+            if (child->fd_table[i].openfile) {
+                child->fd_table[i].openfile->refcount++;
+            }
+        }
+    }
+
+    interruptManager.setInterruptStatus(status);
+}
+
+void FileManager::exec_process_fs(PCB* pcb) {
+    bool status = interruptManager.getInterruptStatus();
+    interruptManager.disableInterrupt();
+
+    if (pcb && !pcb->fs_info.cwd_path[0]) {
+        pcb->fs_info.cwd_path[0] = '/';
+        pcb->fs_info.cwd_path[1] = '\0';
+    }
+
+    interruptManager.setInterruptStatus(status);
+}
+
+void FileManager::release_process_fs(PCB* pcb) {
+    bool status = interruptManager.getInterruptStatus();
+    interruptManager.disableInterrupt();
+
+    if (pcb) {
+        for (int i = 0; i < MAX_FD_COUNT; i++) {
+            close_fd(pcb, i);
+        }
+        memset(pcb->fd_table, 0, sizeof(pcb->fd_table));
+        memset(&pcb->fs_info, 0, sizeof(pcb->fs_info));
+        pcb->fs_info.cwd_path[0] = '/';
+        pcb->fs_info.cwd_path[1] = '\0';
+    }
+
+    interruptManager.setInterruptStatus(status);
 }
 
 int FileManager::dump_fd(int fd) {

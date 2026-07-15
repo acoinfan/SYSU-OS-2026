@@ -12,5 +12,6 @@ void test_file_open_close(void* arg);
 void test_file_read_write(void* arg);
 void test_file_append_create_remove_seek(void* arg);
 void test_vfs_full(void* arg);
+void test_fd_fork_process();
 void init_process(void* arg);
 #endif

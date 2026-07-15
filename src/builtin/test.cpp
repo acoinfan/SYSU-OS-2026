@@ -322,3 +322,161 @@ void test_vfs_full(void* arg) {
     write("[vfs_full] sync done\n");
     write("[vfs_full] end\n");
 }
+
+static int fork_log_fd = -1;
+
+static void fork_log(const char* str) {
+    if (fork_log_fd >= 0 && str) {
+        fdappend(fork_log_fd, (void*)str, strlen(str));
+    }
+}
+
+static void fork_log_int(int value) {
+    char num[16];
+    int pos = 0;
+
+    if (value < 0) {
+        fork_log("-");
+        value = -value;
+    }
+
+    itos(num, (uint32)value, 10);
+    while (num[pos]) {
+        pos++;
+    }
+    if (pos == 0) {
+        fork_log("0");
+    } else {
+        fork_log(num);
+    }
+}
+
+static void fork_log_kv(const char* key, int value) {
+    fork_log(key);
+    fork_log_int(value);
+    fork_log("\n");
+}
+
+void test_fd_fork_process() {
+    write("[fork_fd] begin\n");
+
+    remove_file("/forkfd.log");
+    create_file("/forkfd.log", 0);
+    fork_log_fd = open("/forkfd.log", 0);
+    fork_log("[fork_fd] begin\n");
+    fork_log_kv("[fork_fd] log fd = ", fork_log_fd);
+
+    remove_file("/forkfd.txt");
+    int cr = create_file("/forkfd.txt", 0);
+    printf("[fork_fd] create /forkfd.txt -> %d\n", cr);
+    fork_log_kv("[fork_fd] create /forkfd.txt -> ", cr);
+
+    int fd = open("/forkfd.txt", 0);
+    printf("[fork_fd] open -> %d\n", fd);
+    fork_log_kv("[fork_fd] open -> ", fd);
+    if (fd < 0) {
+        write("[fork_fd] open failed\n");
+        fork_log("[fork_fd] open failed\n");
+        exit(-1);
+    }
+
+    char data[] = "0123456789";
+    int app = fdappend(fd, data, 10);
+    printf("[fork_fd] append -> %d\n", app);
+    fork_log_kv("[fork_fd] append -> ", app);
+
+    int seek0 = fseek(fd, 0, FSEEK_SET);
+    printf("[fork_fd] seek head -> %d\n", seek0);
+    fork_log_kv("[fork_fd] seek head -> ", seek0);
+    fd_dump(fd);
+
+    int pid = fork();
+    if (pid == -1) {
+        write("[fork_fd] fork failed\n");
+        fork_log("[fork_fd] fork failed\n");
+        close(fd);
+        exit(-1);
+    }
+
+    if (pid == 0) {
+        printf("[fork_fd:child1] pid=%d inherited fd=%d\n", getpid(), fd);
+        fork_log_kv("[fork_fd:child1] pid = ", getpid());
+        fork_log_kv("[fork_fd:child1] inherited fd = ", fd);
+        fd_dump(fd);
+
+        char child_buf[6];
+        memset(child_buf, 0, sizeof(child_buf));
+        int rd = fdread(fd, child_buf, 5);
+        printf("[fork_fd:child1] read -> %d, data = %s\n", rd, child_buf);
+        fork_log_kv("[fork_fd:child1] read -> ", rd);
+        fork_log("[fork_fd:child1] data = ");
+        fork_log(child_buf);
+        fork_log("\n");
+        fd_dump(fd);
+
+        write("[fork_fd:child1] exit without close\n");
+        fork_log("[fork_fd:child1] exit without close\n");
+        exit(11);
+    }
+
+    int waited = waitpid(pid, nullptr);
+    printf("[fork_fd:parent] wait child1 -> %d\n", waited);
+    fork_log_kv("[fork_fd:parent] wait child1 -> ", waited);
+    fd_dump(fd);
+
+    char parent_buf[6];
+    memset(parent_buf, 0, sizeof(parent_buf));
+    int rd = fdread(fd, parent_buf, 5);
+    printf("[fork_fd:parent] read after child exit -> %d, data = %s\n", rd, parent_buf);
+    fork_log_kv("[fork_fd:parent] read after child exit -> ", rd);
+    fork_log("[fork_fd:parent] data = ");
+    fork_log(parent_buf);
+    fork_log("\n");
+    fd_dump(fd);
+
+    int pid2 = fork();
+    if (pid2 == -1) {
+        write("[fork_fd] second fork failed\n");
+        fork_log("[fork_fd] second fork failed\n");
+        close(fd);
+        exit(-1);
+    }
+
+    if (pid2 == 0) {
+        printf("[fork_fd:child2] pid=%d inherited fd=%d\n", getpid(), fd);
+        fork_log_kv("[fork_fd:child2] pid = ", getpid());
+        fork_log_kv("[fork_fd:child2] inherited fd = ", fd);
+        fd_dump(fd);
+        int c = close(fd);
+        printf("[fork_fd:child2] close inherited fd -> %d\n", c);
+        fork_log_kv("[fork_fd:child2] close inherited fd -> ", c);
+        exit(12);
+    }
+
+    waited = waitpid(pid2, nullptr);
+    printf("[fork_fd:parent] wait child2 -> %d\n", waited);
+    fork_log_kv("[fork_fd:parent] wait child2 -> ", waited);
+    fd_dump(fd);
+
+    int c = close(fd);
+    printf("[fork_fd:parent] close fd -> %d\n", c);
+    fork_log_kv("[fork_fd:parent] close fd -> ", c);
+
+    int fd2 = open("/forkfd.txt", 0);
+    printf("[fork_fd:parent] reopen after all close -> %d\n", fd2);
+    fork_log_kv("[fork_fd:parent] reopen after all close -> ", fd2);
+    if (fd2 >= 0) {
+        fd_dump(fd2);
+        close(fd2);
+    }
+
+    fork_log("[fork_fd] end\n");
+    if (fork_log_fd >= 0) {
+        close(fork_log_fd);
+        fork_log_fd = -1;
+    }
+    sync();
+    write("[fork_fd] sync done\n");
+    write("[fork_fd] end\n");
+    exit(0);
+}
