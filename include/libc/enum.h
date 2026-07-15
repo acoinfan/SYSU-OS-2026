@@ -129,6 +129,7 @@ enum SyscallType : uint8 {
     SYS_EXIT, 
     SYS_WAIT,
     SYS_EXEC,
+    SYS_EXEC_ARGV,
     SYS_EXECFUNC,
 
     SYS_YIELD,

@@ -35,8 +35,10 @@ static int append_log(const char* text)
     return ret;
 }
 
-int main()
+int main(int argc, char** argv)
 {
+    (void)argc;
+    (void)argv;
     char buf[64];
     memset(buf, 0, sizeof(buf));
 

@@ -17,10 +17,19 @@ static int out_pad(putc_callback_t out, char pad, int num) {
     return num;
 }
 
-Format analyse_format(const char *const fmt, int* idx) {
+static void init_format(Format* format) {
+    format->width = DEFAULT_WIDTH;
+    format->left_align = false;
+    format->zero_pad = false;
+    format->valid = true;
+    format->length = Format::LEN_INT;
+    format->specifier = 0;
+}
+
+void analyse_format(const char *const fmt, int* idx, Format* format) {
     ++(*idx);
-    Format format;
-    while (format.valid) {
+    init_format(format);
+    while (format->valid) {
         switch (fmt[*idx]) {
             case 'd':
             case 'i':
@@ -29,29 +38,29 @@ Format analyse_format(const char *const fmt, int* idx) {
             case 'c':
             case 's':
             case 'p':
-                format.specifier = fmt[*idx];
-                return format;
+                format->specifier = fmt[*idx];
+                return;
             case '0':
-                if (!format.zero_pad)
-                    format.zero_pad = true;
+                if (!format->zero_pad)
+                    format->zero_pad = true;
                 else
-                    format.valid = false;
+                    format->valid = false;
                 break;
             case '-':
-                if (!format.left_align)
-                    format.left_align = true;
+                if (!format->left_align)
+                    format->left_align = true;
                 else
-                    format.valid = false;
+                    format->valid = false;
                 break;
             case 'l':
-                if (format.length == format.LEN_INT)
-                    format.length = format.LEN_LONG;
+                if (format->length == format->LEN_INT)
+                    format->length = format->LEN_LONG;
                 #ifdef PLATFORM_64BIT
-                    else if (format.length == format.LEN_LONG)
-                        format.length = format.LEN_LLONG;
+                    else if (format->length == format->LEN_LONG)
+                        format->length = format->LEN_LLONG;
                 #endif
                 else
-                    format.valid = false;
+                    format->valid = false;
                 break;
             case '1':
             case '2':
@@ -62,8 +71,8 @@ Format analyse_format(const char *const fmt, int* idx) {
             case '7':
             case '8':
             case '9': {
-                if (format.width != DEFAULT_WIDTH) {
-                    format.valid = false;
+                if (format->width != DEFAULT_WIDTH) {
+                    format->valid = false;
                     break;
                 }
                 int sum = 0;
@@ -73,27 +82,27 @@ Format analyse_format(const char *const fmt, int* idx) {
                     (*idx)++;
                 }
                 (*idx)--;
-                format.width = sum;
+                format->width = sum;
                 break;
             }
             default:
-                format.valid = 0;
-                return format;
+                format->valid = false;
+                return;
         }
         (*idx)++;
     }
-    return format;
 }
 
-int varg_to_callback(putc_callback_t out, Format format, va_list* ap) {
+int varg_to_callback(putc_callback_t out, const Format* format, va_list* ap) {
     int counter = 0;
-    switch (format.specifier) {
+    char num_buf[MAX_NUM_LENGTH + 1];
+    switch (format->specifier) {
         case 'p': {
             void* ptr = va_arg(*ap, void*);
 #ifdef PLATFORM_64BIT
-            char* str = hexify((unsigned long long)ptr);
+            char* str = hexify((unsigned long long)ptr, num_buf);
 #else
-            char* str = hexify((unsigned long)ptr);
+            char* str = hexify((unsigned long)ptr, num_buf);
 #endif
             counter += out_str(out, "0x");
             counter += out_str(out, str);
@@ -101,6 +110,9 @@ int varg_to_callback(putc_callback_t out, Format format, va_list* ap) {
         }
         case 's': {
             char* str = va_arg(*ap, char*);
+            if (!str) {
+                str = (char*)"(null)";
+            }
             counter += out_str(out, str);
             break;
         }
@@ -117,42 +129,42 @@ int varg_to_callback(putc_callback_t out, Format format, va_list* ap) {
 #else
             long num;
 #endif
-            switch (format.length) {
-                case format.LEN_INT:
+            switch (format->length) {
+                case Format::LEN_INT:
                     num = va_arg(*ap, int);
                     break;
-                case format.LEN_LONG:
+                case Format::LEN_LONG:
                     num = va_arg(*ap, long);
                     break;
 #ifdef PLATFORM_64BIT
-                case format.LEN_LLONG:
+                case Format::LEN_LLONG:
                     num = va_arg(*ap, long long);
                     break;
 #endif
                 default:
                     break;
             }
-            char* str = sign_decify(num);
+            char* str = sign_decify(num, num_buf);
             unsigned length = strlen(str);
-            if (length < format.width) {
-                if (format.left_align) {
+            if (length < format->width) {
+                if (format->left_align) {
                     counter += out_str(out, str);
-                    counter += out_pad(out, ' ', format.width - length);
+                    counter += out_pad(out, ' ', format->width - length);
                 } else {
                     int negative = str[0] == '-';
-                    if (format.zero_pad && negative) {
+                    if (format->zero_pad && negative) {
                         out('-');
-                        counter += out_pad(out, '0', format.width - length);
+                        counter += out_pad(out, '0', format->width - length);
                         counter += out_str(out, str + 1);
-                    } else if (format.zero_pad && !negative) {
-                        counter += out_pad(out, '0', format.width - length);
+                    } else if (format->zero_pad && !negative) {
+                        counter += out_pad(out, '0', format->width - length);
                         counter += out_str(out, str);
-                    } else if (!format.zero_pad && negative) {
-                        counter += out_pad(out, ' ', format.width - length);
+                    } else if (!format->zero_pad && negative) {
+                        counter += out_pad(out, ' ', format->width - length);
                         out('-');
                         counter += out_str(out, str + 1);
                     } else {
-                        counter += out_pad(out, ' ', format.width - length);
+                        counter += out_pad(out, ' ', format->width - length);
                         counter += out_str(out, str);
                     }
                 }
@@ -167,32 +179,32 @@ int varg_to_callback(putc_callback_t out, Format format, va_list* ap) {
 #else
             unsigned long num;
 #endif
-            switch (format.length) {
-                case format.LEN_INT:
+            switch (format->length) {
+                case Format::LEN_INT:
                     num = va_arg(*ap, unsigned);
                     break;
-                case format.LEN_LONG:
+                case Format::LEN_LONG:
                     num = va_arg(*ap, unsigned long);
                     break;
 #ifdef PLATFORM_64BIT
-                case format.LEN_LLONG:
+                case Format::LEN_LLONG:
                     num = va_arg(*ap, unsigned long long);
                     break;
 #endif
                 default:
                     break;
             }
-            char* str = unsign_decify(num);
+            char* str = unsign_decify(num, num_buf);
             unsigned length = strlen(str);
-            if (length < format.width) {
-                if (format.left_align) {
+            if (length < format->width) {
+                if (format->left_align) {
                     counter += out_str(out, str);
-                    counter += out_pad(out, ' ', format.width - length);
-                } else if (format.zero_pad) {
-                    counter += out_pad(out, '0', format.width - length);
+                    counter += out_pad(out, ' ', format->width - length);
+                } else if (format->zero_pad) {
+                    counter += out_pad(out, '0', format->width - length);
                     counter += out_str(out, str);
                 } else {
-                    counter += out_pad(out, ' ', format.width - length);
+                    counter += out_pad(out, ' ', format->width - length);
                     counter += out_str(out, str);
                 }
             } else {
@@ -206,32 +218,32 @@ int varg_to_callback(putc_callback_t out, Format format, va_list* ap) {
 #else
             unsigned long num;
 #endif
-            switch (format.length) {
-                case format.LEN_INT:
+            switch (format->length) {
+                case Format::LEN_INT:
                     num = va_arg(*ap, unsigned);
                     break;
-                case format.LEN_LONG:
+                case Format::LEN_LONG:
                     num = va_arg(*ap, unsigned long);
                     break;
 #ifdef PLATFORM_64BIT
-                case format.LEN_LLONG:
+                case Format::LEN_LLONG:
                     num = va_arg(*ap, unsigned long long);
                     break;
 #endif
                 default:
                     break;
             }
-            char* str = hexify(num);
+            char* str = hexify(num, num_buf);
             unsigned length = strlen(str);
-            if (length < format.width) {
-                if (format.left_align) {
+            if (length < format->width) {
+                if (format->left_align) {
                     counter += out_str(out, str);
-                    counter += out_pad(out, ' ', format.width - length);
-                } else if (format.zero_pad) {
-                    counter += out_pad(out, '0', format.width - length);
+                    counter += out_pad(out, ' ', format->width - length);
+                } else if (format->zero_pad) {
+                    counter += out_pad(out, '0', format->width - length);
                     counter += out_str(out, str);
                 } else {
-                    counter += out_pad(out, ' ', format.width - length);
+                    counter += out_pad(out, ' ', format->width - length);
                     counter += out_str(out, str);
                 }
             } else {
@@ -244,8 +256,7 @@ int varg_to_callback(putc_callback_t out, Format format, va_list* ap) {
 }
 
 #ifdef PLATFORM_64BIT
-char* sign_decify(long long number) {
-    static char buf[MAX_NUM_LENGTH + 1];
+char* sign_decify(long long number, char* buf) {
     int idx = MAX_NUM_LENGTH;
     buf[idx] = '\0';
     bool negative = false;
@@ -266,8 +277,7 @@ char* sign_decify(long long number) {
     return &buf[idx];
 }
 
-char* unsign_decify(unsigned long long number) {
-    static char buf[MAX_NUM_LENGTH + 1];
+char* unsign_decify(unsigned long long number, char* buf) {
     int idx = MAX_NUM_LENGTH;
     buf[idx] = '\0';
     if (number == 0) {
@@ -280,23 +290,21 @@ char* unsign_decify(unsigned long long number) {
     return &buf[idx];
 }
 
-char* hexify(unsigned long long number) {
-    static char buf[MAX_NUM_LENGTH + 1];
-    static const char table[16] = {'0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f'};
+char* hexify(unsigned long long number, char* buf) {
     int idx = MAX_NUM_LENGTH;
     buf[idx] = '\0';
     if (number == 0) {
         buf[--idx] = '0';
     }
     while (number > 0) {
-        buf[--idx] = table[number % 16];
+        int digit = number % 16;
+        buf[--idx] = digit < 10 ? ('0' + digit) : ('a' + digit - 10);
         number /= 16;
     }
     return &buf[idx];
 }
 #else
-char* sign_decify(long number) {
-    static char buf[MAX_NUM_LENGTH + 1];
+char* sign_decify(long number, char* buf) {
     int idx = MAX_NUM_LENGTH;
     buf[idx] = '\0';
     bool negative = false;
@@ -317,8 +325,7 @@ char* sign_decify(long number) {
     return &buf[idx];
 }
 
-char* unsign_decify(unsigned long number) {
-    static char buf[MAX_NUM_LENGTH + 1];
+char* unsign_decify(unsigned long number, char* buf) {
     int idx = MAX_NUM_LENGTH;
     buf[idx] = '\0';
     if (number == 0) {
@@ -331,16 +338,15 @@ char* unsign_decify(unsigned long number) {
     return &buf[idx];
 }
 
-char* hexify(unsigned long number) {
-    static char buf[MAX_NUM_LENGTH + 1];
-    static const char table[16] = {'0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f'};
+char* hexify(unsigned long number, char* buf) {
     int idx = MAX_NUM_LENGTH;
     buf[idx] = '\0';
     if (number == 0) {
         buf[--idx] = '0';
     }
     while (number > 0) {
-        buf[--idx] = table[number % 16];
+        int digit = number % 16;
+        buf[--idx] = digit < 10 ? ('0' + digit) : ('a' + digit - 10);
         number /= 16;
     }
     return &buf[idx];
@@ -355,11 +361,12 @@ int vsprintf_callback(putc_callback_t out, const char* fmt, va_list ap) {
             counter++;
             i++;
         } else if (fmt[i] == '%' && fmt[i + 1] != '%') {
-            Format format = analyse_format(fmt, &i);
+            Format format;
+            analyse_format(fmt, &i, &format);
             if (!format.valid) {
                 return -1;
             }
-            counter += varg_to_callback(out, format, &ap);
+            counter += varg_to_callback(out, &format, &ap);
         } else {
             out(fmt[i]);
             counter++;

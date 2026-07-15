@@ -54,6 +54,9 @@ struct fs_context {
     char      cwd_path[256];   // 绝对路径字符串（如 "/mnt/sdb/docs"）
 };
 
+#define MAX_ARGC_COUNT 16
+#define MAX_ARGV_LENGTH 128
+
 // PCB占一个整页
 struct PCB
 {
@@ -76,12 +79,14 @@ struct PCB
     bool needFork = false;
     void* entry;
     void* entry_kernel;
-    // char argv[MAX_ARGV_COUNT][MAX_ARGV_LENGTH];
-    // int argc;
-    // char** envp = nullptr;
+    int argc;
+    char (*argv)[MAX_ARGV_LENGTH];
     fs_context fs_info;
     File fd_table[MAX_FD_COUNT]; // per-process file descriptor table
 };
+
+static_assert(sizeof(PCB) <= PAGE_SIZE, "PCB must fit in one page");
+static_assert(__builtin_offsetof(PCB, stack) == 0, "PCB.stack must stay at offset 0");
 
 /*
                        内核栈

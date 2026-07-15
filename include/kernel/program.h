@@ -71,8 +71,7 @@ public:
     @param filename ELF filename / Function Address
     @param target nullptr for (init[pid=1]), Current PCB for execve
     */
-    int executeProcess(const char *filename, int priority, int mode, 
-                        char** argv = nullptr, char** envp = nullptr);
+    int executeProcess(const char *filename, int priority, int mode);
     // 创建一个线程并放入就绪队列
 
     // function：线程执行的函数

@@ -314,7 +314,7 @@ void idle_thread(void *arg)
     uint32 count = 0;
     // sleep
     // test_fat12_fs();
-    int pid = programManager.executeProcess((const char*)init, 0, 1, nullptr);
+    int pid = programManager.executeProcess((const char*)init, 0, 1);
     if (pid == -1)
     {
         kprintf("can not execute init\n");
@@ -343,7 +343,7 @@ extern "C" void setup_kernel()
     
     // 输出管理器
     screen.initialize();
-    kprintf("test%x\n", 1);
+    kprintf("[setup] printf %x %d %u %s %c\n", 0x2a, -7, 42u, "ok", '!');
     // 进程/线程管理器
     programManager.initialize(SchedulerType::RR);
     

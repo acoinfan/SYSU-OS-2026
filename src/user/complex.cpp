@@ -179,8 +179,10 @@ static int test_fork()
     return 0;
 }
 
-int main()
+int main(int argc, char** argv)
 {
+    (void)argc;
+    (void)argv;
     printf("[complex] begin\n");
     test_stdio();
     test_memory();

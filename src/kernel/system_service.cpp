@@ -43,6 +43,7 @@ void SystemService::initialize()
     setSystemCall(SYS_PTE_DUMP, (int)syscall_pte_dump);
     setSystemCall(SYS_PA_DUMP, (int)syscall_pa_dump);
     setSystemCall(SYS_EXEC, (int)syscall_execve);
+    setSystemCall(SYS_EXEC_ARGV, (int)syscall_execveArgv);
     setSystemCall(SYS_EXECFUNC, (int)syscall_execveFunc);
     setSystemCall(SYS_EXPANDHEAP, (int)syscall_expandHeap);
 }
@@ -158,6 +159,10 @@ void syscall_execveFunc(uint32 func) {
 
 int syscall_execve(const char* filename) {
     return programManager.execve(filename, nullptr, nullptr, 0);
+}
+
+int syscall_execveArgv(const char* filename, char* const argv[]) {
+    return programManager.execve(filename, argv, nullptr, 0);
 }
 
 int syscall_pte_dump(uint32 vaddr)

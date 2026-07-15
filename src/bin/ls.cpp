@@ -16,8 +16,10 @@ static void print_entry(const LsEntry& entry)
     printf("%s\n", entry.name);
 }
 
-int main()
+int main(int argc, char** argv)
 {
+    (void)argc;
+    (void)argv;
     LsEntry entries[LS_MAX_ENTRIES];
     int count = vfs_ls(".", entries, LS_MAX_ENTRIES);
     if (count < 0) {

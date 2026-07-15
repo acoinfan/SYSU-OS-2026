@@ -49,6 +49,14 @@ int execve(const char* path) {
     return (int)_syscall1(SYS_EXEC, (uint32)path);
 }
 
+int execve(const char* path, char* const argv[]) {
+    return execveArgv(path, argv);
+}
+
+int execveArgv(const char* path, char* const argv[]) {
+    return (int)_syscall2(SYS_EXEC_ARGV, (uint32)path, (uint32)argv);
+}
+
 uint32 expandHeap(uint32 pageCount) {
     return _syscall1(SYS_EXPANDHEAP, pageCount);
 }

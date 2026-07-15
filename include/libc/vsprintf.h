@@ -3,8 +3,6 @@
 
 #define DEFAULT_WIDTH 1
 #define MAX_NUM_LENGTH 128
-#define false 0
-#define true 1
 
 #include "os_type.h"
 #include "stdarg.h"
@@ -18,31 +16,31 @@
 typedef void (*putc_callback_t)(char c);
 
 struct Format {
-    unsigned width = DEFAULT_WIDTH;
-    int left_align = false;
-    int zero_pad = false;
-    int valid = true;
+    unsigned width;
+    bool left_align;
+    bool zero_pad;
+    bool valid;
     enum {
         LEN_INT = 0,
         LEN_LONG,
         LEN_LLONG
-    } length = LEN_INT;
+    } length;
     char specifier;
 };
 
-Format analyse_format(const char *const fmt, int* idx);
+void analyse_format(const char *const fmt, int* idx, Format* format);
 
 #ifdef PLATFORM_64BIT
-char* sign_decify(long long number);
-char* unsign_decify(unsigned long long number);
-char* hexify(unsigned long long number);
+char* sign_decify(long long number, char* buf);
+char* unsign_decify(unsigned long long number, char* buf);
+char* hexify(unsigned long long number, char* buf);
 #else
-char* sign_decify(long number);
-char* unsign_decify(unsigned long number);
-char* hexify(unsigned long number);
+char* sign_decify(long number, char* buf);
+char* unsign_decify(unsigned long number, char* buf);
+char* hexify(unsigned long number, char* buf);
 #endif
 
-int varg_to_callback(putc_callback_t out, Format format, va_list* ap);
+int varg_to_callback(putc_callback_t out, const Format* format, va_list* ap);
 int vsprintf_callback(putc_callback_t out, const char* fmt, va_list ap);
 
 #endif

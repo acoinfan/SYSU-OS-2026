@@ -171,12 +171,5 @@ int kprintf(const char *const fmt, ...) {
 }
 
 void kputc(char c) {
-    static char buf[65];
-    static int idx = 0;
-    buf[idx++] = c;
-    if (idx >= 64 || c == '\n') {
-        buf[idx] = '\0';
-        screen.print(buf);
-        idx = 0;
-    } 
+    screen.print((uint8)c);
 }

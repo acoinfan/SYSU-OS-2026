@@ -221,6 +221,98 @@ static bool load_segment_page(int fd, const ElfSegment& seg, uint32 page_vaddr,
     return true;
 }
 
+static int exec_arg_strlen(const char* str) {
+    if (!str) {
+        return -1;
+    }
+
+    int len = 0;
+    while (str[len]) {
+        len++;
+        if (len >= MAX_ARGV_LENGTH) {
+            return -1;
+        }
+    }
+    return len;
+}
+
+static void clear_process_args(PCB* process) {
+    if (!process || !process->argv) {
+        return;
+    }
+    process->argc = 0;
+    memset(process->argv, 0, PAGE_SIZE);
+}
+
+static bool copy_exec_args(PCB* process, const char* filename, char* const argv[]) {
+    if (!process || !process->argv) {
+        return false;
+    }
+
+    clear_process_args(process);
+
+    if (argv && argv[0]) {
+        for (int i = 0; i < MAX_ARGC_COUNT && argv[i]; i++) {
+            int len = exec_arg_strlen(argv[i]);
+            if (len < 0) {
+                return false;
+            }
+            strcpy(process->argv[i], argv[i]);
+            process->argc++;
+        }
+        if (process->argc == MAX_ARGC_COUNT && argv[MAX_ARGC_COUNT]) {
+            return false;
+        }
+        return true;
+    }
+
+    int len = exec_arg_strlen(filename);
+    if (len < 0) {
+        return false;
+    }
+    strcpy(process->argv[0], filename);
+    process->argc = 1;
+    return true;
+}
+
+static uint32 push_exec_args_to_user_stack(PCB* process) {
+    uint32 sp = STACK_TOP - 4;
+    uint32 argv_user[MAX_ARGC_COUNT];
+    int argc = process ? process->argc : 0;
+
+    if (argc < 0) {
+        argc = 0;
+    }
+    if (argc > MAX_ARGC_COUNT) {
+        argc = MAX_ARGC_COUNT;
+    }
+
+    for (int i = argc - 1; i >= 0; i--) {
+        int len = strlen(process->argv[i]) + 1;
+        sp -= len;
+        strcpy((char*)sp, process->argv[i]);
+        argv_user[i] = sp;
+    }
+
+    sp &= ~0x3;
+    sp -= sizeof(uint32);
+    *(uint32*)sp = 0;
+
+    for (int i = argc - 1; i >= 0; i--) {
+        sp -= sizeof(uint32);
+        *(uint32*)sp = argv_user[i];
+    }
+
+    uint32 argv_ptr = sp;
+    sp -= sizeof(uint32);
+    *(uint32*)sp = argv_ptr;
+    sp -= sizeof(uint32);
+    *(uint32*)sp = argc;
+    sp -= sizeof(uint32);
+    *(uint32*)sp = (uint32)k_exit;
+    return sp;
+}
+
 } // namespace
 
 const int PCB_SIZE = 4096;                   // PCB的大小，4KB。
@@ -312,6 +404,14 @@ int ProgramManager::executeThread(ThreadFunction function, void *parameter, cons
     thread->ticksPassedBy = 0;
     thread->pid = ((int)thread - (int)PCB_SET) / PCB_SIZE;
     thread->parentPid = programManager.running ? programManager.running->pid: 0;
+    thread->argv = (char (*)[MAX_ARGV_LENGTH])memoryManager.allocatePages(
+        AddressPoolType::KERNEL, 1, VP_RW);
+    if (!thread->argv) {
+        PCB_SET_STATUS[thread->pid] = false;
+        interruptManager.setInterruptStatus(status);
+        return -1;
+    }
+    clear_process_args(thread);
     fileManager.init_process_fs(thread);
 
     // 线程栈
@@ -461,6 +561,11 @@ PCB *ProgramManager::allocatePCB()
 void ProgramManager::releasePCB(PCB *program)
 {
     fileManager.release_process_fs(program);
+    if (program->argv) {
+        memoryManager.releasePages(AddressPoolType::KERNEL, (int)program->argv, 1);
+        program->argv = nullptr;
+        program->argc = 0;
+    }
     int index = ((int)program - (int)PCB_SET) / PCB_SIZE;
     PCB_SET_STATUS[index] = false;
     this->allPrograms.erase(&(program->tagInAllList));
@@ -521,7 +626,7 @@ void ProgramManager::MESA_WakeUp(PCB *program) {
     }
 }
 
-int ProgramManager::executeProcess(const char *filename, int priority, int mode, char** argv, char** envp) 
+int ProgramManager::executeProcess(const char *filename, int priority, int mode) 
 {
     bool status = interruptManager.getInterruptStatus();
     interruptManager.disableInterrupt();
@@ -1238,6 +1343,10 @@ bool ProgramManager::copyProcess(PCB* parent, PCB* child)
     child->ticks = parent->ticks;
     child->ticksPassedBy = parent->ticksPassedBy;
     strcpy(child->name, parent->name);
+    child->argc = parent->argc;
+    if (child->argv && parent->argv) {
+        memcpy(child->argv, parent->argv, PAGE_SIZE);
+    }
 
     // 子进程页目录表指针(虚拟地址)
     int *childPageDir = (int *)child->pageDirectoryAddress;
@@ -1438,6 +1547,17 @@ int ProgramManager::execve(const char *filename, char *const argv[], char *const
 
     // 使用现有进程PCB
     PCB *process = programManager.running;
+    if (mode == 0) {
+        if (!copy_exec_args(process, filename, argv)) {
+            if (elfConf.source_fd >= 0) {
+                fileManager.close(elfConf.source_fd);
+            }
+            interruptManager.setInterruptStatus(status);
+            return -1;
+        }
+    } else {
+        clear_process_args(process);
+    }
     fileManager.exec_process_fs(process);
 
     
@@ -1493,13 +1613,7 @@ int ProgramManager::execve(const char *filename, char *const argv[], char *const
                                                     (VPageFlags)(VP_USER | VP_RW), UserSegment::STACK, true);
     LOG_TRACE("[load_process] entry=0x%x lazy_stack=0x%x pid=%d\n", (uint32)elfConf.entry, addr, process->pid);
 
-    // 顶部空间设置(returnVal和 TODO: argc, argv)
-    uint32 user_esp = STACK_TOP - 4; 
-    user_esp -= 12;                  
-    int *userStack = (int *)user_esp;
-    userStack[0] = (int)k_exit;        // 对应 esp
-    userStack[1] = 0;                // 对应 esp + 4 (argc)
-    userStack[2] = 0;                // 对应 esp + 8 (argv)
+    uint32 user_esp = push_exec_args_to_user_stack(process);
 
     // 找到当前进程内核栈顶应该放置 ProcessStartStack 的位置
     ProcessStartStack *interruptStack = (ProcessStartStack *)((int)process + PAGE_SIZE - sizeof(ProcessStartStack));

@@ -226,18 +226,20 @@ static void join_path(const char* dir, const char* cmd, char* out)
     out[pos] = '\0';
 }
 
-static int exec_command(const char* cmd)
+static int exec_command(char** argv, int argc)
 {
     static const char* path_dirs[SHELL_PATH_DIRS] = {"/bin", "/usr/bin"};
     char path[SHELL_PATH_MAX];
+    const char* cmd = argv[0];
+    (void)argc;
 
     if (has_slash(cmd)) {
-        return execve(cmd);
+        return execve(cmd, argv);
     }
 
     for (int i = 0; i < SHELL_PATH_DIRS; i++) {
         join_path(path_dirs[i], cmd, path);
-        int ret = execve(path);
+        int ret = execve(path, argv);
         if (ret != -1) {
             return ret;
         }
@@ -340,10 +342,6 @@ static bool builtin_cmd(char** argv, int argc)
 
 static void run_program(char** argv, int argc, bool bg, const char* cmdline)
 {
-    if (argc > 1) {
-        printf("[shell] note: exec argv is not supported yet; ignoring args\n");
-    }
-
     int pid = fork();
     if (pid < 0) {
         printf("[shell] fork failed\n");
@@ -351,7 +349,7 @@ static void run_program(char** argv, int argc, bool bg, const char* cmdline)
     }
 
     if (pid == 0) {
-        int ret = exec_command(argv[0]);
+        int ret = exec_command(argv, argc);
         if (has_slash(argv[0])) {
             printf("[shell] command not found: %s (%d)\n", argv[0], ret);
         } else {
@@ -380,8 +378,10 @@ static void print_prompt()
     write("osh> ");
 }
 
-int main()
+int main(int boot_argc, char** boot_argv)
 {
+    (void)boot_argc;
+    (void)boot_argv;
     char line[SHELL_LINE_MAX];
     char original[SHELL_LINE_MAX];
     char* argv[SHELL_MAX_ARGS];
